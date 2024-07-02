@@ -593,6 +593,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
+name = "dorf"
+version = "0.1.0"
+dependencies = [
+ "anndists",
+ "anybytes",
+ "cpu-time",
+ "digest",
+ "env_logger",
+ "hdf5",
+ "hnsw_rs",
+ "log",
+ "ndarray",
+ "pyo3",
+ "rand",
+ "tribles",
+ "zerocopy",
+]
+
+[[package]]
 name = "ed25519"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2197,25 +2216,6 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
-
-[[package]]
-name = "smol"
-version = "0.1.0"
-dependencies = [
- "anndists",
- "anybytes",
- "cpu-time",
- "digest",
- "env_logger",
- "hdf5",
- "hnsw_rs",
- "log",
- "ndarray",
- "pyo3",
- "rand",
- "tribles",
- "zerocopy",
-]
 
 [[package]]
 name = "snafu"

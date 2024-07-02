@@ -151,7 +151,7 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     Ok(())
 }
 
-pub fn run_smol(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
+pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
     // # load dataset
     let file = hdf5::File::open(&fname)?;
   

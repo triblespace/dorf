@@ -13,7 +13,7 @@ fn bench_mnist_hnsw(fname: String, parallel: bool) {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn smol(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn dorf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bench_mnist_hnsw, m)?)?;
     Ok(())
 }

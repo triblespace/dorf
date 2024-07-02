@@ -19,10 +19,10 @@ def __():
 
 @app.cell
 def __():
-    import smol
+    import dorf
     import importlib
-    importlib.reload(smol)
-    return importlib, smol
+    importlib.reload(dorf)
+    return importlib, dorf
 
 
 @app.cell
@@ -43,26 +43,26 @@ def __(mo):
 
 @app.cell
 def __():
-    mnist_dataset = "/Users/jp/Desktop/triblespace/smol/datasets/fashion-mnist-784-euclidean.hdf5"
+    mnist_dataset = "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5"
     return mnist_dataset,
 
 
 @app.cell
-def __(mnist_dataset, smol):
-    smol.bench_mnist(mnist_dataset, True)
+def __(mnist_dataset, dorf):
+    dorf.bench_mnist(mnist_dataset, True)
     return
 
 
 @app.cell
-def __(mo, smol):
+def __(mo, dorf):
     with mo.redirect_stdout():
-        smol.printstuff()
+        dorf.printstuff()
     return
 
 
 @app.cell
-def __(smol):
-    smol.printstuff()
+def __(dorf):
+    dorf.printstuff()
     return
 
 
