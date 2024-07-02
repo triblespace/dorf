@@ -10,6 +10,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.21.1"
+tribles = {git = "https://github.com/triblesspace/tribles-rust.git"}
+digest = "0.10.7"
+zerocopy = { version = "0.7.34", features = ["derive"] }
+anybytes = "0.1.0"
 
 hdf5 = { version = "0.8" }
 ndarray = { version = "0.15" }

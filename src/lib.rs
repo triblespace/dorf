@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 
+mod ml;
 mod benchmarks;
 mod stdio;
 
@@ -7,7 +8,7 @@ mod stdio;
 #[pyfunction]
 fn bench_mnist_hnsw(fname: String, parallel: bool) {
     let mut stdout = stdio::stdout();
-    benchmarks::ann_mnist_784_euclidean::run_hnsw(&mut stdout, fname, parallel)
+    benchmarks::ann_mnist_784_euclidean::run_hnsw(&mut stdout, fname, parallel).unwrap();
 }
 
 /// A Python module implemented in Rust.

@@ -26,6 +26,22 @@ def __():
 
 
 @app.cell
+def __(mo):
+    mo.md(
+        """
+        ## dataset
+         * distances (nbojects, dim)   f32 matrix    for tests objects
+         * neighbors (nbobjects, nbnearest) int32 matrix giving the num of nearest neighbors in train data
+          * test      (nbobjects, dim)   f32 matrix  test data
+          * train     (nbobjects, dim)   f32 matrix  train data
+
+        load hdf5 data file benchmarks from https://github.com/erikbern/ann-benchmarks
+        """
+    )
+    return
+
+
+@app.cell
 def __():
     mnist_dataset = "/Users/jp/Desktop/triblespace/smol/datasets/fashion-mnist-784-euclidean.hdf5"
     return mnist_dataset,

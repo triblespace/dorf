@@ -1,39 +1,41 @@
 use cpu_time::ProcessTime;
-use std::{io::Write, time::{Duration, SystemTime}};
-
-// search in serial mode i7-core @2.7Ghz for 10 fist neighbours
-//  max_nb_conn   ef_cons    ef_search   scale_factor    extend  keep pruned  recall        req/s      last ratio
-//
-//     12           400         12           1              0          0        0.917        6486       1.005
-//     24           400         24           1              1          0        0.9779       3456       1.001
-
-// parallel mode 4 i7-core @2.7Ghz
-//  max_nb_conn   ef_cons    ef_search   scale_factor    extend  keep pruned  recall        req/s      last ratio
-//     24           400         24           1              0          0        0.977        12566       1.001
-//     24           400         12           1              0          0        0.947        18425       1.003
-
-// 8 hyperthreaded i7-core @ 2.3 Ghz
-//     24           400         24           1              0          0        0.977        22197        1.001
-
-// 24 core Core(TM) i9-13900HX simdeez
-//     24           400         24           1              0          0        0.977        62000        1.001
+use std::{ io::Write, time::{Duration, SystemTime}};
 
 use anndists::dist::*;
 use hnsw_rs::prelude::*;
 
-use super::utils::*;
+pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
+    // # load dataset
+    let file = hdf5::File::open(&fname)?;
+  
+    // load distance data
+    let test_distances = file.dataset("distances")?
+        .read_2d::<f32>()?;
 
-pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
-    writeln!(stdout,"test_load_hdf5 {:?}", fname).unwrap();
-    // now recall that data are stored in row order.
-    let anndata = annhdf5::AnnBenchmarkData::new(fname);
-    let anndata = anndata.unwrap();
-    let knbn_max = anndata.test_distances.dim().1;
-    let nb_elem = anndata.train_data.len();
+    // load neighbours
+    let test_neighbours = file.dataset("neighbors")?
+        .read_2d::<i32>()?;
+
+    // load test data
+    let test_data: Vec<_> = file.dataset("test")?
+        .read_2d::<f32>()?
+        .rows().into_iter()
+        .map(|row| row.to_vec())
+        .collect();
+
+    // load train data
+    let train_data: Vec<_> = file.dataset("train")?
+        .read_2d::<f32>()?
+        .rows().into_iter()
+        .map(|row| row.to_vec())
+        .collect();
+
+    let knbn_max = test_distances.dim().1;
+    let nb_elem = train_data.len();
     writeln!(stdout,
         "Train size : {}, test size : {}",
         nb_elem,
-        anndata.test_data.len()
+        test_data.len()
     ).unwrap();
     writeln!(stdout,"Nb neighbours answers for test data : {}", knbn_max).unwrap();
     //
@@ -47,7 +49,7 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
     writeln!(stdout,
         " ====================================================================================="
     ).unwrap();
-    let nb_search = anndata.test_data.len();
+    let nb_search = test_data.len();
     writeln!(stdout," number of search {:?}", nb_search).unwrap();
 
     let mut hnsw = Hnsw::<f32, DistL2>::new(max_nb_connection, nb_elem, nb_layer, ef_c, DistL2 {});
@@ -57,8 +59,7 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
     let mut start = ProcessTime::now();
 
     let mut now = SystemTime::now();
-    let data_for_par_insertion = anndata
-        .train_data
+    let data_for_par_insertion = train_data
         .iter()
         .enumerate()
         .map(|(i, x)| (x.as_slice(), i))
@@ -99,11 +100,11 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
     // search
     if parallel {
         writeln!(stdout," \n parallel search").unwrap();
-        knn_neighbours_for_tests = hnsw.parallel_search(&anndata.test_data, knbn, ef_c);
+        knn_neighbours_for_tests = hnsw.parallel_search(&test_data, knbn, ef_c);
     } else {
         writeln!(stdout," \n serial search").unwrap();
-        for i in 0..anndata.test_data.len() {
-            let knn_neighbours: Vec<Neighbour> = hnsw.search(&anndata.test_data[i], knbn, ef_c);
+        for t in test_data {
+            let knn_neighbours: Vec<Neighbour> = hnsw.search(&t, knbn, ef_c);
             knn_neighbours_for_tests.push(knn_neighbours);
         }
     }
@@ -115,12 +116,10 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
         search_cpu_time, search_sys_time
     ).unwrap();
     // now compute recall rate
-    for i in 0..anndata.test_data.len() {
-        let true_distances = anndata.test_distances.row(i);
+    for (neighbours, true_distances) in knn_neighbours_for_tests.into_iter().zip(test_distances.rows()) {
         let max_dist = true_distances[knbn - 1];
-        let mut _knn_neighbours_id: Vec<usize> =
-            knn_neighbours_for_tests[i].iter().map(|p| p.d_id).collect();
-        let knn_neighbours_dist: Vec<f32> = knn_neighbours_for_tests[i]
+        let mut _knn_neighbours_id: Vec<usize> = neighbours.iter().map(|p| p.d_id).collect();
+        let knn_neighbours_dist: Vec<f32> = neighbours
             .iter()
             .map(|p| p.distance)
             .collect();
@@ -148,4 +147,37 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) {
 
     let reqs = (nb_search as f32) * 1.0e+6_f32 / search_sys_time;
     writeln!(stdout, "req/s {:?}", reqs).unwrap();
+
+    Ok(())
+}
+
+pub fn run_smol(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
+    // # load dataset
+    let file = hdf5::File::open(&fname)?;
+  
+    // load distance data
+    let test_distances = file.dataset("distances")?
+        .read_2d::<f32>()?;
+
+    // load neighbours
+    let test_neighbours = file.dataset("neighbors")?
+        .read_2d::<i32>()?;
+
+    // load test data
+    let test_data: Vec<_> = file.dataset("test")?
+        .read_2d::<f32>()?
+        .rows().into_iter()
+        .map(|row| row.to_vec())
+        .collect();
+
+    // load train data
+    let train_data: Vec<_> = file.dataset("train")?
+        .read_2d::<f32>()?
+        .rows().into_iter()
+        .map(|row| row.to_vec())
+        .collect();
+
+    //let train_embeddings  =
+
+    Ok(())
 }
