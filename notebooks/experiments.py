@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.6.23"
+__generated_with = "0.6.26"
 app = marimo.App()
 
 
@@ -22,7 +22,7 @@ def __():
     import dorf
     import importlib
     importlib.reload(dorf)
-    return importlib, dorf
+    return dorf, importlib
 
 
 @app.cell
@@ -48,13 +48,13 @@ def __():
 
 
 @app.cell
-def __(mnist_dataset, dorf):
-    dorf.bench_mnist(mnist_dataset, True)
+def __(dorf, mnist_dataset):
+    dorf.bench_mnist_dorf(mnist_dataset, True)
     return
 
 
 @app.cell
-def __(mo, dorf):
+def __(dorf, mo):
     with mo.redirect_stdout():
         dorf.printstuff()
     return

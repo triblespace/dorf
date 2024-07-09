@@ -1,8 +1,12 @@
 use cpu_time::ProcessTime;
+use tribles::{types::hash::Blake3, BlobSet};
+use zerocopy::{F32, LE};
 use std::{ io::Write, time::{Duration, SystemTime}};
 
 use anndists::dist::*;
 use hnsw_rs::prelude::*;
+
+use crate::ml::{Embedding, SW, ZC};
 
 pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
     // # load dataset
@@ -151,7 +155,10 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     Ok(())
 }
 
+
 pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
+    writeln!(stdout, "Loading dataset...").unwrap();
+
     // # load dataset
     let file = hdf5::File::open(&fname)?;
   
@@ -164,20 +171,71 @@ pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
         .read_2d::<i32>()?;
 
     // load test data
-    let test_data: Vec<_> = file.dataset("test")?
+    let test_data: Vec<Embedding<784, f32>> = file.dataset("test")?
         .read_2d::<f32>()?
         .rows().into_iter()
-        .map(|row| row.to_vec())
+        .map(|row| row.as_slice().unwrap().try_into().unwrap())
         .collect();
 
     // load train data
-    let train_data: Vec<_> = file.dataset("train")?
+    let train_data: Vec<ZC<Embedding<784, f32>>> = file.dataset("train")?
         .read_2d::<f32>()?
         .rows().into_iter()
-        .map(|row| row.to_vec())
+        .map(|row| {
+            let slice = row.as_slice().unwrap();
+            assert!(!slice.iter().any(|i| i.is_nan()));
+            let embedding:Embedding<784, f32> = slice.try_into().unwrap();
+            assert!(!embedding.iter().any(|i| i.is_nan()));
+            let zc_embedding: ZC<Embedding<784, f32>> = embedding.into();
+            assert!(!zc_embedding.iter().any(|i| i.is_nan()));
+
+            zc_embedding
+        })
         .collect();
 
-    //let train_embeddings  =
+    writeln!(stdout, "Loading complete...").unwrap();
+
+    let blobs: BlobSet<Blake3> = BlobSet::new();
+    let mut sw = SW::new(blobs, |n: &ZC<Embedding<784, f32>>, o: &ZC<Embedding<784, f32>>| {
+        assert!(n.len() == 784);
+        assert!(o.len() == 784);
+        assert!(!n.iter().any(|i| i.is_nan()));
+        assert!(!o.iter().any(|i| i.is_nan()));
+
+        DistL2::eval(&DistL2{}, n, o)
+});
+
+    writeln!(stdout, "Caching embeddings...").unwrap();
+    let start = ProcessTime::now();
+    for d in train_data {
+        sw.insert(d);
+    }
+    let cpu_time: Duration = start.elapsed();
+    writeln!(stdout, "Caching completed in {:?}...", cpu_time).unwrap();
+
+    writeln!(stdout, "Preparing sw...").unwrap();
+    let start = ProcessTime::now();
+    sw.prepare();
+    let cpu_time: Duration = start.elapsed();
+    writeln!(stdout, "Preparations completed in {:?}...", cpu_time).unwrap();
+
+    writeln!(stdout, "Stepping sw with {:?} nodes...", sw.nodes.len()).unwrap();
+    let start = ProcessTime::now();
+    sw.step();
+    let cpu_time: Duration = start.elapsed();
+    writeln!(stdout, "Stepping completed in {:?}...", cpu_time).unwrap();
 
     Ok(())
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dorf() {
+        run_dorf(&mut std::io::stdout(), "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5".into(), false).unwrap();
+    }
 }
