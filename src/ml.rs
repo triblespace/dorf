@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::iter::zip;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -193,6 +194,18 @@ where H: Digest<OutputSize = U32>,
             }
 
             self.steps.push(next);
+        }
+    }
+
+    pub fn count_change(&mut self) -> usize {
+        let l = self.steps.len();
+        if l <= 1 {
+            self.nodes.len()
+        } else {
+            let last = &self.steps[l - 1];
+            let prev = &self.steps[l - 2];
+
+            zip(last, prev).filter(|(&l, &p)| l != p).count()
         }
     }
 }

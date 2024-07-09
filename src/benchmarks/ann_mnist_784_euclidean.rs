@@ -219,11 +219,19 @@ pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     let cpu_time: Duration = start.elapsed();
     writeln!(stdout, "Preparations completed in {:?}...", cpu_time).unwrap();
 
-    writeln!(stdout, "Stepping sw with {:?} nodes...", sw.nodes.len()).unwrap();
-    let start = ProcessTime::now();
-    sw.step();
-    let cpu_time: Duration = start.elapsed();
-    writeln!(stdout, "Stepping completed in {:?}...", cpu_time).unwrap();
+
+    loop {
+        writeln!(stdout, "Stepping sw with {:?} nodes...", sw.nodes.len()).unwrap();
+        let start = ProcessTime::now();
+        sw.step();
+        let cpu_time: Duration = start.elapsed();
+        let change = sw.count_change();
+        writeln!(stdout, "Stepping completed in {:?} with {:?} changes...", cpu_time, change).unwrap();
+        if change == 0 {
+            writeln!(stdout, "Fixpoint reached...").unwrap();
+            break;
+        }
+    }
 
     Ok(())
 }
