@@ -48,6 +48,12 @@ def __():
 
 
 @app.cell
+def __():
+    #dorf.bench_mnist_hnsw(mnist_dataset, True)
+    return
+
+
+@app.cell
 def __(dorf, mnist_dataset):
     dorf.bench_mnist_dorf(mnist_dataset, True)
     return

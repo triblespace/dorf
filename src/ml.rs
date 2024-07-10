@@ -14,12 +14,14 @@ use tribles::{BlobParseError, BlobSet, Bloblike, Bytes, Handle, Value};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 #[cfg(not(target_endian = "little"))]
-compile_error!("This crate does not compile on BE architectures.
+compile_error!(
+    "This crate does not compile on BE architectures.
 The reason being that most libraries just assume that they run on LE platforms,
 e.g. when performing zero copy reads from transmuted arrays.
 So long as Rust does not refine its handling of endianess, e.g. by introducing explicit endian
 number types in core, we have no other choice than to pave the cow paths and assume
-that all native numbers are little endian.");
+that all native numbers are little endian."
+);
 
 #[derive(AsBytes, FromZeroes, FromBytes, Debug)]
 #[repr(transparent)]
@@ -52,16 +54,19 @@ pub struct ZC<T> {
 }
 
 impl<T> std::fmt::Debug for ZC<T>
-where T: FromBytes + Debug {
+where
+    T: FromBytes + Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let inner: &T = self;
         Debug::fmt(inner, f)
     }
 }
 
-
 impl<T> std::ops::Deref for ZC<T>
-where T: FromBytes {
+where
+    T: FromBytes,
+{
     type Target = T;
 
     #[inline]
@@ -71,36 +76,47 @@ where T: FromBytes {
 }
 
 impl<T> From<T> for ZC<T>
-where T: ByteOwner {
+where
+    T: ByteOwner,
+{
     fn from(value: T) -> Self {
         ZC {
             bytes: Bytes::from_owner(value),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
 
 impl<T> From<Arc<T>> for ZC<T>
-where T: ByteOwner {
+where
+    T: ByteOwner,
+{
     fn from(value: Arc<T>) -> Self {
         ZC {
             bytes: Bytes::from_arc(value),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
 
 impl<T> Bloblike for ZC<T>
-where T: FromBytes {
+where
+    T: FromBytes,
+{
     fn into_blob(self) -> Bytes {
         self.bytes
     }
 
     fn from_blob(blob: Bytes) -> Result<Self, BlobParseError> {
         if <T as FromBytes>::ref_from(&blob).is_none() {
-            Err(BlobParseError::new("wrong size or alignment of bytes for type"))
+            Err(BlobParseError::new(
+                "wrong size or alignment of bytes for type",
+            ))
         } else {
-            Ok(ZC {bytes: blob, _type: PhantomData})
+            Ok(ZC {
+                bytes: blob,
+                _type: PhantomData,
+            })
         }
     }
 
@@ -115,7 +131,7 @@ where T: FromBytes {
 
 #[derive(Debug)]
 pub enum EmbeddingError {
-    BadLength
+    BadLength,
 }
 
 impl<const LEN: usize, T> TryFrom<Vec<T>> for Embedding<LEN, T> {
@@ -127,18 +143,21 @@ impl<const LEN: usize, T> TryFrom<Vec<T>> for Embedding<LEN, T> {
 }
 
 impl<'a, const LEN: usize, T> TryFrom<&'a [T]> for Embedding<LEN, T>
-where [T; LEN]: TryFrom<&'a [T]> {
+where
+    [T; LEN]: TryFrom<&'a [T]>,
+{
     type Error = EmbeddingError;
 
     fn try_from(value: &'a [T]) -> Result<Self, Self::Error> {
         if value.len() != LEN {
-            return Err(EmbeddingError::BadLength)
+            return Err(EmbeddingError::BadLength);
         }
-        let Ok(arr) = value.try_into() else { panic!("failed conversion despite correct length") };
+        let Ok(arr) = value.try_into() else {
+            panic!("failed conversion despite correct length")
+        };
         Ok(Embedding(arr))
     }
 }
-
 
 pub struct SW<H, T, F> {
     blobs: BlobSet<H>,
@@ -148,11 +167,18 @@ pub struct SW<H, T, F> {
 }
 
 impl<H, T, F> SW<H, T, F>
-where H: Digest<OutputSize = U32>,
-      T: Bloblike + ?Sized,
-      F: Fn(&T, &T) -> f32 {
+where
+    H: Digest<OutputSize = U32>,
+    T: Bloblike + ?Sized,
+    F: Fn(&T, &T) -> f32,
+{
     pub fn new(blobs: BlobSet<H>, dist: F) -> Self {
-        return Self { blobs, nodes: vec![], steps: vec![], dist };
+        return Self {
+            blobs,
+            nodes: vec![],
+            steps: vec![],
+            dist,
+        };
     }
 
     pub fn insert(&mut self, node: T) -> Handle<H, T> {
@@ -185,9 +211,9 @@ where H: Digest<OutputSize = U32>,
                 let hop_distance = (self.dist)(&node, &hop);
 
                 let next_i = if hop_distance < target_distance {
-                    target_i
-                } else {
                     hop_i
+                } else {
+                    target_i
                 };
 
                 next.push(next_i);
@@ -195,6 +221,40 @@ where H: Digest<OutputSize = U32>,
 
             self.steps.push(next);
         }
+    }
+
+    pub fn wide_step(&mut self) -> (usize, usize) {
+        if let Some(step) = self.steps.last() {
+            for (i, old_step) in self.steps.iter().enumerate().rev() {
+                let mut changes = 0;
+                let mut next = vec![];
+
+                for (node_i, &target_i) in step.into_iter().enumerate() {
+                    let hop_i = old_step[target_i];
+                    let node = self.blobs.get(self.nodes[node_i]).unwrap().unwrap();
+                    let target = self.blobs.get(self.nodes[target_i]).unwrap().unwrap();
+                    let hop = self.blobs.get(self.nodes[hop_i]).unwrap().unwrap();
+
+                    let target_distance = (self.dist)(&node, &target);
+                    let hop_distance = (self.dist)(&node, &hop);
+
+                    let next_i = if hop_distance < target_distance {
+                        changes += 1;
+                        hop_i
+                    } else {
+                        target_i
+                    };
+
+                    next.push(next_i);
+                }
+
+                if changes > 0 {
+                    self.steps.push(next);
+                    return (i, changes);
+                }
+            }
+        }
+        (0, 0)
     }
 
     pub fn count_change(&mut self) -> usize {

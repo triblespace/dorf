@@ -1,7 +1,10 @@
 use cpu_time::ProcessTime;
+use std::{
+    io::Write,
+    time::{Duration, SystemTime},
+};
 use tribles::{types::hash::Blake3, BlobSet};
 use zerocopy::{F32, LE};
-use std::{ io::Write, time::{Duration, SystemTime}};
 
 use anndists::dist::*;
 use hnsw_rs::prelude::*;
@@ -11,50 +14,58 @@ use crate::ml::{Embedding, SW, ZC};
 pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
     // # load dataset
     let file = hdf5::File::open(&fname)?;
-  
+
     // load distance data
-    let test_distances = file.dataset("distances")?
-        .read_2d::<f32>()?;
+    let test_distances = file.dataset("distances")?.read_2d::<f32>()?;
 
     // load neighbours
-    let test_neighbours = file.dataset("neighbors")?
-        .read_2d::<i32>()?;
+    let test_neighbours = file.dataset("neighbors")?.read_2d::<i32>()?;
 
     // load test data
-    let test_data: Vec<_> = file.dataset("test")?
+    let test_data: Vec<_> = file
+        .dataset("test")?
         .read_2d::<f32>()?
-        .rows().into_iter()
+        .rows()
+        .into_iter()
         .map(|row| row.to_vec())
         .collect();
 
     // load train data
-    let train_data: Vec<_> = file.dataset("train")?
+    let train_data: Vec<_> = file
+        .dataset("train")?
         .read_2d::<f32>()?
-        .rows().into_iter()
+        .rows()
+        .into_iter()
         .map(|row| row.to_vec())
         .collect();
 
     let knbn_max = test_distances.dim().1;
     let nb_elem = train_data.len();
-    writeln!(stdout,
+    writeln!(
+        stdout,
         "Train size : {}, test size : {}",
         nb_elem,
         test_data.len()
-    ).unwrap();
-    writeln!(stdout,"Nb neighbours answers for test data : {}", knbn_max).unwrap();
+    )
+    .unwrap();
+    writeln!(stdout, "Nb neighbours answers for test data : {}", knbn_max).unwrap();
     //
     let max_nb_connection = 24;
     let nb_layer = 16.min((nb_elem as f32).ln().trunc() as usize);
     let ef_c = 400;
-    writeln!(stdout,
+    writeln!(
+        stdout,
         " number of elements to insert {:?} , setting max nb layer to {:?} ef_construction {:?}",
         nb_elem, nb_layer, ef_c
-    ).unwrap();
-    writeln!(stdout,
+    )
+    .unwrap();
+    writeln!(
+        stdout,
         " ====================================================================================="
-    ).unwrap();
+    )
+    .unwrap();
     let nb_search = test_data.len();
-    writeln!(stdout," number of search {:?}", nb_search).unwrap();
+    writeln!(stdout, " number of search {:?}", nb_search).unwrap();
 
     let mut hnsw = Hnsw::<f32, DistL2>::new(max_nb_connection, nb_elem, nb_layer, ef_c, DistL2 {});
     hnsw.set_extend_candidates(false);
@@ -70,24 +81,31 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
         .collect();
 
     if parallel {
-        writeln!(stdout," \n parallel insertion").unwrap();
+        writeln!(stdout, " \n parallel insertion").unwrap();
         hnsw.parallel_insert_slice(&data_for_par_insertion);
     } else {
-        writeln!(stdout," \n serial insertion").unwrap();
+        writeln!(stdout, " \n serial insertion").unwrap();
         for d in data_for_par_insertion {
             hnsw.insert_slice(d);
         }
     }
     let mut cpu_time: Duration = start.elapsed();
     //
-    writeln!(stdout,
+    writeln!(
+        stdout,
         "\n hnsw data insertion cpu time  {:?}  system time {:?} ",
         cpu_time,
         now.elapsed()
-    ).unwrap();
+    )
+    .unwrap();
 
     hnsw.dump_layer_info();
-    writeln!(stdout," hnsw data nb point inserted {:?}", hnsw.get_nb_point()).unwrap();
+    writeln!(
+        stdout,
+        " hnsw data nb point inserted {:?}",
+        hnsw.get_nb_point()
+    )
+    .unwrap();
     //
     //  Now the bench with 10 neighbours
     //
@@ -98,15 +116,15 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     hnsw.set_searching_mode(true);
     let knbn = 10;
     let ef_c = max_nb_connection;
-    writeln!(stdout,"\n searching with ef : {:?}", ef_c).unwrap();
+    writeln!(stdout, "\n searching with ef : {:?}", ef_c).unwrap();
     start = ProcessTime::now();
     now = SystemTime::now();
     // search
     if parallel {
-        writeln!(stdout," \n parallel search").unwrap();
+        writeln!(stdout, " \n parallel search").unwrap();
         knn_neighbours_for_tests = hnsw.parallel_search(&test_data, knbn, ef_c);
     } else {
-        writeln!(stdout," \n serial search").unwrap();
+        writeln!(stdout, " \n serial search").unwrap();
         for t in test_data {
             let knn_neighbours: Vec<Neighbour> = hnsw.search(&t, knbn, ef_c);
             knn_neighbours_for_tests.push(knn_neighbours);
@@ -115,18 +133,20 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     cpu_time = start.elapsed();
     let search_sys_time = now.elapsed().unwrap().as_micros() as f32;
     let search_cpu_time = cpu_time.as_micros() as f32;
-    writeln!(stdout,
+    writeln!(
+        stdout,
         "total cpu time for search requests {:?} , system time {:?} ",
         search_cpu_time, search_sys_time
-    ).unwrap();
+    )
+    .unwrap();
     // now compute recall rate
-    for (neighbours, true_distances) in knn_neighbours_for_tests.into_iter().zip(test_distances.rows()) {
+    for (neighbours, true_distances) in knn_neighbours_for_tests
+        .into_iter()
+        .zip(test_distances.rows())
+    {
         let max_dist = true_distances[knbn - 1];
         let mut _knn_neighbours_id: Vec<usize> = neighbours.iter().map(|p| p.d_id).collect();
-        let knn_neighbours_dist: Vec<f32> = neighbours
-            .iter()
-            .map(|p| p.distance)
-            .collect();
+        let knn_neighbours_dist: Vec<f32> = neighbours.iter().map(|p| p.distance).collect();
         nb_returned.push(knn_neighbours_dist.len());
         // count how many distances of knn_neighbours_dist are less than
         let recall = knn_neighbours_dist
@@ -140,10 +160,17 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
         }
         last_distances_ratio.push(ratio);
     }
-    let mean_fraction_returned = (nb_returned.iter().sum::<usize>() as f32) / ((nb_returned.len() * knbn) as f32);
-    writeln!(stdout,"mean fraction returned by search {:?} ", mean_fraction_returned).unwrap();
+    let mean_fraction_returned =
+        (nb_returned.iter().sum::<usize>() as f32) / ((nb_returned.len() * knbn) as f32);
+    writeln!(
+        stdout,
+        "mean fraction returned by search {:?} ",
+        mean_fraction_returned
+    )
+    .unwrap();
 
-    let last_distances_ratio = last_distances_ratio.iter().sum::<f32>() / last_distances_ratio.len() as f32;
+    let last_distances_ratio =
+        last_distances_ratio.iter().sum::<f32>() / last_distances_ratio.len() as f32;
     writeln!(stdout, "last distances ratio {:?}", last_distances_ratio).unwrap();
 
     let mean_recall = (recalls.iter().sum::<usize>() as f32) / ((knbn * recalls.len()) as f32);
@@ -155,36 +182,37 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     Ok(())
 }
 
-
 pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
     writeln!(stdout, "Loading dataset...").unwrap();
 
     // # load dataset
     let file = hdf5::File::open(&fname)?;
-  
+
     // load distance data
-    let test_distances = file.dataset("distances")?
-        .read_2d::<f32>()?;
+    let test_distances = file.dataset("distances")?.read_2d::<f32>()?;
 
     // load neighbours
-    let test_neighbours = file.dataset("neighbors")?
-        .read_2d::<i32>()?;
+    let test_neighbours = file.dataset("neighbors")?.read_2d::<i32>()?;
 
     // load test data
-    let test_data: Vec<Embedding<784, f32>> = file.dataset("test")?
+    let test_data: Vec<Embedding<784, f32>> = file
+        .dataset("test")?
         .read_2d::<f32>()?
-        .rows().into_iter()
+        .rows()
+        .into_iter()
         .map(|row| row.as_slice().unwrap().try_into().unwrap())
         .collect();
 
     // load train data
-    let train_data: Vec<ZC<Embedding<784, f32>>> = file.dataset("train")?
+    let train_data: Vec<ZC<Embedding<784, f32>>> = file
+        .dataset("train")?
         .read_2d::<f32>()?
-        .rows().into_iter()
+        .rows()
+        .into_iter()
         .map(|row| {
             let slice = row.as_slice().unwrap();
             assert!(!slice.iter().any(|i| i.is_nan()));
-            let embedding:Embedding<784, f32> = slice.try_into().unwrap();
+            let embedding: Embedding<784, f32> = slice.try_into().unwrap();
             assert!(!embedding.iter().any(|i| i.is_nan()));
             let zc_embedding: ZC<Embedding<784, f32>> = embedding.into();
             assert!(!zc_embedding.iter().any(|i| i.is_nan()));
@@ -196,14 +224,17 @@ pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     writeln!(stdout, "Loading complete...").unwrap();
 
     let blobs: BlobSet<Blake3> = BlobSet::new();
-    let mut sw = SW::new(blobs, |n: &ZC<Embedding<784, f32>>, o: &ZC<Embedding<784, f32>>| {
-        assert!(n.len() == 784);
-        assert!(o.len() == 784);
-        assert!(!n.iter().any(|i| i.is_nan()));
-        assert!(!o.iter().any(|i| i.is_nan()));
+    let mut sw = SW::new(
+        blobs,
+        |n: &ZC<Embedding<784, f32>>, o: &ZC<Embedding<784, f32>>| {
+            assert!(n.len() == 784);
+            assert!(o.len() == 784);
+            assert!(!n.iter().any(|i| i.is_nan()));
+            assert!(!o.iter().any(|i| i.is_nan()));
 
-        DistL2::eval(&DistL2{}, n, o)
-});
+            DistL2::eval(&DistL2 {}, n, o)
+        },
+    );
 
     writeln!(stdout, "Caching embeddings...").unwrap();
     let start = ProcessTime::now();
@@ -219,14 +250,18 @@ pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     let cpu_time: Duration = start.elapsed();
     writeln!(stdout, "Preparations completed in {:?}...", cpu_time).unwrap();
 
-
     loop {
         writeln!(stdout, "Stepping sw with {:?} nodes...", sw.nodes.len()).unwrap();
         let start = ProcessTime::now();
-        sw.step();
+        let (layer, change) = sw.wide_step();
         let cpu_time: Duration = start.elapsed();
-        let change = sw.count_change();
-        writeln!(stdout, "Stepping completed in {:?} with {:?} changes...", cpu_time, change).unwrap();
+        //let change = sw.count_change();
+        writeln!(
+            stdout,
+            "Stepping completed in {:?} with {:?} changes from layer {:?}...",
+            cpu_time, change, layer
+        )
+        .unwrap();
         if change == 0 {
             writeln!(stdout, "Fixpoint reached...").unwrap();
             break;
@@ -236,14 +271,17 @@ pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     Ok(())
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn dorf() {
-        run_dorf(&mut std::io::stdout(), "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5".into(), false).unwrap();
+        run_dorf(
+            &mut std::io::stdout(),
+            "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5".into(),
+            false,
+        )
+        .unwrap();
     }
 }

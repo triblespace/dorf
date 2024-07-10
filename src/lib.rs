@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
-mod ml;
 mod benchmarks;
+mod ml;
 mod stdio;
 
 /// Run bench on mnist784 dataset.
