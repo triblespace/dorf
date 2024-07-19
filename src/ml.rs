@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::sync::Arc;
+use std::convert::AsRef;
 
 use anndists::dist::{DistL2, Distance};
 use anybytes::ByteOwner;
@@ -12,6 +12,9 @@ use digest::Digest;
 use tribles::types::Hash;
 use tribles::{BlobParseError, BlobSet, Bloblike, Bytes, Handle, Value};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
+
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 #[cfg(not(target_endian = "little"))]
 compile_error!(
@@ -48,87 +51,6 @@ impl<const LEN: usize, T: AsBytes + Send + Sync + 'static> ByteOwner for Box<Emb
     }
 }
 
-pub struct ZC<T> {
-    bytes: Bytes,
-    _type: PhantomData<T>,
-}
-
-impl<T> std::fmt::Debug for ZC<T>
-where
-    T: FromBytes + Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let inner: &T = self;
-        Debug::fmt(inner, f)
-    }
-}
-
-impl<T> std::ops::Deref for ZC<T>
-where
-    T: FromBytes,
-{
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        FromBytes::ref_from(&self.bytes).expect("ZeroCopy validation should happen at creation")
-    }
-}
-
-impl<T> From<T> for ZC<T>
-where
-    T: ByteOwner,
-{
-    fn from(value: T) -> Self {
-        ZC {
-            bytes: Bytes::from_owner(value),
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T> From<Arc<T>> for ZC<T>
-where
-    T: ByteOwner,
-{
-    fn from(value: Arc<T>) -> Self {
-        ZC {
-            bytes: Bytes::from_arc(value),
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T> Bloblike for ZC<T>
-where
-    T: FromBytes,
-{
-    fn into_blob(self) -> Bytes {
-        self.bytes
-    }
-
-    fn from_blob(blob: Bytes) -> Result<Self, BlobParseError> {
-        if <T as FromBytes>::ref_from(&blob).is_none() {
-            Err(BlobParseError::new(
-                "wrong size or alignment of bytes for type",
-            ))
-        } else {
-            Ok(ZC {
-                bytes: blob,
-                _type: PhantomData,
-            })
-        }
-    }
-
-    fn as_handle<H>(&self) -> Handle<H, Self>
-    where
-        H: Digest<OutputSize = U32>,
-    {
-        let digest = H::digest(&self.bytes);
-        unsafe { Handle::new(Hash::new(digest.into())) }
-    }
-}
-
 #[derive(Debug)]
 pub enum EmbeddingError {
     BadLength,
@@ -159,44 +81,60 @@ where
     }
 }
 
-pub struct SW<H, T, F> {
-    blobs: BlobSet<H>,
-    pub nodes: Vec<Handle<H, T>>,
-    pub steps: Vec<Vec<usize>>,
-    pub dist: F,
+pub trait Metric<T> {
+    fn distance(a: &T, b: &T) -> f32;
 }
 
-impl<H, T, F> SW<H, T, F>
+pub struct MetricL2();
+
+impl<T> Metric<T> for MetricL2
+where T: AsRef<[u8]> {
+    fn distance(a: &T, b: &T) -> f32 {
+        DistL2::eval(&DistL2 {}, a.as_ref(), b.as_ref())
+    }
+}
+
+pub struct SW<H, T, M> {
+    pub blobs: BlobSet<H>,
+    pub nodes: Vec<Value<Handle<H, T>>>,
+    pub steps: Vec<Vec<usize>>,
+    pub metric: PhantomData<M>,
+}
+
+impl<H, T, M> SW<H, T, M>
 where
     H: Digest<OutputSize = U32>,
     T: Bloblike + ?Sized,
-    F: Fn(&T, &T) -> f32,
+    M: Metric<T>,
 {
-    pub fn new(blobs: BlobSet<H>, dist: F) -> Self {
+    pub fn new(blobs: BlobSet<H>) -> Self {
         return Self {
             blobs,
             nodes: vec![],
             steps: vec![],
-            dist,
+            metric: PhantomData,
         };
     }
 
-    pub fn insert(&mut self, node: T) -> Handle<H, T> {
+    pub fn insert(&mut self, node: T) -> Value<Handle<H, T>> {
         let handle = self.blobs.insert(node);
         self.nodes.push(handle);
         handle
     }
 
-    pub fn prepare(&mut self) {
+    pub fn prepare(&mut self, random_layers: usize) {
         self.nodes.sort();
         self.nodes.dedup();
 
-        let mut step_0 = vec![self.nodes.len() - 1];
-        step_0.extend(0..self.nodes.len() - 1);
-
-        self.steps.push(step_0);
+        let base: Vec<usize> = (0..self.nodes.len()).collect();
+        for _ in 0..random_layers {
+            let mut step = base.clone();
+            step.shuffle(&mut thread_rng());
+            self.steps.push(step);
+        }
     }
 
+    #[allow(unused)]
     pub fn step(&mut self) {
         if let Some(step) = self.steps.last() {
             let mut next = vec![];
@@ -207,8 +145,8 @@ where
                 let target = self.blobs.get(self.nodes[target_i]).unwrap().unwrap();
                 let hop = self.blobs.get(self.nodes[hop_i]).unwrap().unwrap();
 
-                let target_distance = (self.dist)(&node, &target);
-                let hop_distance = (self.dist)(&node, &hop);
+                let target_distance = M::distance(&node, &target);
+                let hop_distance = M::distance(&node, &hop);
 
                 let next_i = if hop_distance < target_distance {
                     hop_i
@@ -223,7 +161,7 @@ where
         }
     }
 
-    pub fn wide_step(&mut self) -> (usize, usize) {
+    pub fn multilayer_step(&mut self) -> (usize, usize) {
         if let Some(step) = self.steps.last() {
             for (i, old_step) in self.steps.iter().enumerate().rev() {
                 let mut changes = 0;
@@ -235,8 +173,8 @@ where
                     let target = self.blobs.get(self.nodes[target_i]).unwrap().unwrap();
                     let hop = self.blobs.get(self.nodes[hop_i]).unwrap().unwrap();
 
-                    let target_distance = (self.dist)(&node, &target);
-                    let hop_distance = (self.dist)(&node, &hop);
+                    let target_distance = M::distance(&node, &target);
+                    let hop_distance = M::distance(&node, &hop);
 
                     let next_i = if hop_distance < target_distance {
                         changes += 1;
@@ -257,6 +195,41 @@ where
         (0, 0)
     }
 
+    pub fn search(&self, query: &T, span: usize) -> Value<Handle<H, T>> {
+        let mut nodes_i: Vec<(usize, f32)> = (0..span).map(|node_i| {
+            let node = self.blobs.get(self.nodes[node_i]).unwrap().unwrap();
+            let node_distance = M::distance(query, &node);
+            (node_i, node_distance)
+        }).collect();
+        nodes_i.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+
+        let mut max_distance: f32 = nodes_i.iter().map(|(_, d)| *d)
+            .max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
+        
+        for step in self.steps.iter() {
+            let mut next_nodes_i = nodes_i.clone();
+            for (node_i, _) in nodes_i {
+                let target_i = step[node_i];
+                let target = self.blobs.get(self.nodes[target_i]).unwrap().unwrap();
+    
+                let target_distance = M::distance(query, &target);
+    
+                if target_distance < max_distance &&
+                   !next_nodes_i.iter().any(|(n, _)| *n == target_i) {
+                    next_nodes_i.push((target_i, target_distance));
+                };
+            }
+            next_nodes_i.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+            next_nodes_i.truncate(span);
+            max_distance = next_nodes_i.last().unwrap().1;
+            nodes_i = next_nodes_i;
+        }
+
+        let node_i = nodes_i.first().unwrap().0;
+        self.nodes[node_i]
+    }
+
+    #[allow(unused)]
     pub fn count_change(&mut self) -> usize {
         let l = self.steps.len();
         if l <= 1 {

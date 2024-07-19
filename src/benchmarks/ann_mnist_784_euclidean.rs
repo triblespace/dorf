@@ -1,15 +1,16 @@
+use pyo3::prelude::*;
+
 use cpu_time::ProcessTime;
 use std::{
     io::Write,
     time::{Duration, SystemTime},
 };
-use tribles::{types::hash::Blake3, BlobSet};
-use zerocopy::{F32, LE};
+use tribles::{types::hash::Blake3, BlobSet, types::zc::ZC};
 
 use anndists::dist::*;
 use hnsw_rs::prelude::*;
 
-use crate::ml::{Embedding, SW, ZC};
+use crate::ml::{Embedding, Metric, MetricL2, SW};
 
 pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
     // # load dataset
@@ -19,7 +20,7 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     let test_distances = file.dataset("distances")?.read_2d::<f32>()?;
 
     // load neighbours
-    let test_neighbours = file.dataset("neighbors")?.read_2d::<i32>()?;
+    let _ = file.dataset("neighbors")?.read_2d::<i32>()?;
 
     // load test data
     let test_data: Vec<_> = file
@@ -182,106 +183,128 @@ pub fn run_hnsw(stdout: &mut impl Write, fname: String, parallel: bool) -> Resul
     Ok(())
 }
 
-pub fn run_dorf(stdout: &mut impl Write, fname: String, parallel: bool) -> Result<(), hdf5::Error> {
-    writeln!(stdout, "Loading dataset...").unwrap();
+#[pyclass]
+pub struct MNISTSW(SW<Blake3, ZC<Embedding<784, f32>>, MetricL2>);
 
+/// Setup mnist784 dorf small world.
+#[pyfunction]
+pub fn setup(fname: String, random_layers: usize) -> MNISTSW {
     // # load dataset
-    let file = hdf5::File::open(&fname)?;
-
-    // load distance data
-    let test_distances = file.dataset("distances")?.read_2d::<f32>()?;
-
-    // load neighbours
-    let test_neighbours = file.dataset("neighbors")?.read_2d::<i32>()?;
-
-    // load test data
-    let test_data: Vec<Embedding<784, f32>> = file
-        .dataset("test")?
-        .read_2d::<f32>()?
-        .rows()
-        .into_iter()
-        .map(|row| row.as_slice().unwrap().try_into().unwrap())
-        .collect();
+    let file = hdf5::File::open(&fname).unwrap();
 
     // load train data
     let train_data: Vec<ZC<Embedding<784, f32>>> = file
-        .dataset("train")?
-        .read_2d::<f32>()?
+        .dataset("train").unwrap()
+        .read_2d::<f32>().unwrap()
         .rows()
         .into_iter()
         .map(|row| {
             let slice = row.as_slice().unwrap();
-            assert!(!slice.iter().any(|i| i.is_nan()));
             let embedding: Embedding<784, f32> = slice.try_into().unwrap();
-            assert!(!embedding.iter().any(|i| i.is_nan()));
             let zc_embedding: ZC<Embedding<784, f32>> = embedding.into();
-            assert!(!zc_embedding.iter().any(|i| i.is_nan()));
-
             zc_embedding
         })
         .collect();
 
-    writeln!(stdout, "Loading complete...").unwrap();
-
     let blobs: BlobSet<Blake3> = BlobSet::new();
-    let mut sw = SW::new(
-        blobs,
-        |n: &ZC<Embedding<784, f32>>, o: &ZC<Embedding<784, f32>>| {
-            assert!(n.len() == 784);
-            assert!(o.len() == 784);
-            assert!(!n.iter().any(|i| i.is_nan()));
-            assert!(!o.iter().any(|i| i.is_nan()));
+    let mut sw = SW::new(blobs);
 
-            DistL2::eval(&DistL2 {}, n, o)
-        },
-    );
-
-    writeln!(stdout, "Caching embeddings...").unwrap();
-    let start = ProcessTime::now();
-    for d in train_data {
-        sw.insert(d);
-    }
-    let cpu_time: Duration = start.elapsed();
-    writeln!(stdout, "Caching completed in {:?}...", cpu_time).unwrap();
-
-    writeln!(stdout, "Preparing sw...").unwrap();
-    let start = ProcessTime::now();
-    sw.prepare();
-    let cpu_time: Duration = start.elapsed();
-    writeln!(stdout, "Preparations completed in {:?}...", cpu_time).unwrap();
-
-    loop {
-        writeln!(stdout, "Stepping sw with {:?} nodes...", sw.nodes.len()).unwrap();
-        let start = ProcessTime::now();
-        let (layer, change) = sw.wide_step();
-        let cpu_time: Duration = start.elapsed();
-        //let change = sw.count_change();
-        writeln!(
-            stdout,
-            "Stepping completed in {:?} with {:?} changes from layer {:?}...",
-            cpu_time, change, layer
-        )
-        .unwrap();
-        if change == 0 {
-            writeln!(stdout, "Fixpoint reached...").unwrap();
-            break;
-        }
+    for d in &train_data {
+        sw.insert(d.clone());
     }
 
-    Ok(())
+    sw.prepare(random_layers);
+
+    MNISTSW(sw)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[pyclass]
+pub struct StepResult {
+    #[pyo3(get)]
+    cpu_time: Duration,
+    #[pyo3(get)]
+    changes: usize,
+    #[pyo3(get)]
+    layer_explored: usize
+}
 
-    #[test]
-    fn dorf() {
-        run_dorf(
-            &mut std::io::stdout(),
-            "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5".into(),
-            false,
-        )
-        .unwrap();
+/// Run step on mnist784 dorf small world.
+#[pyfunction]
+pub fn step(sw: &Bound<'_, MNISTSW>) -> StepResult {
+    let sw = &mut sw.borrow_mut().0;
+
+    let start = ProcessTime::now();
+    let (layer_explored, changes) = sw.multilayer_step();
+    let cpu_time = start.elapsed();
+
+    StepResult {
+        cpu_time,
+        changes,
+        layer_explored
     }
+}
+
+#[pyclass]
+pub struct EvalResult {
+    #[pyo3(get)]
+    avg_cpu_time: Duration,
+    #[pyo3(get)]
+    avg_distance: f32
+}
+
+/// Run evaluation on mnist784 dorf small world.
+#[pyfunction]
+pub fn eval(sw: &Bound<'_, MNISTSW>, fname: String, search_span: usize) -> EvalResult {
+    let sw = &mut sw.borrow_mut().0;
+
+    // # load dataset
+    let file = hdf5::File::open(&fname).unwrap();
+
+    // load distance data
+    let _ = file.dataset("distances").unwrap().read_2d::<f32>().unwrap();
+
+    // load neighbours
+    let _ = file.dataset("neighbors").unwrap().read_2d::<i32>().unwrap();
+
+    // load test data
+    let test_data: Vec<ZC<Embedding<784, f32>>> = file
+        .dataset("test").unwrap()
+        .read_2d::<f32>().unwrap()
+        .rows()
+        .into_iter()
+        .map(|row| {
+            let slice = row.as_slice().unwrap();
+            let embedding: Embedding<784, f32> = slice.try_into().unwrap();
+            let zc_embedding: ZC<Embedding<784, f32>> = embedding.into();
+            zc_embedding
+        })
+        .collect();
+
+    let mut distance = 0.;
+    let start = ProcessTime::now();
+    for query in &test_data {
+        let handle = sw.search(query, search_span);
+        let result = sw.blobs.get(handle).unwrap().unwrap();
+        distance += MetricL2::distance(query, &result);
+    }
+    let avg_cpu_time = start.elapsed() / test_data.len() as u32;
+    let avg_distance = distance / test_data.len() as f32;
+
+    EvalResult{
+        avg_cpu_time,
+        avg_distance
+    }
+}
+
+/// A Python module implemented in Rust.
+pub fn bench(pm: &Bound<'_, PyModule>) -> PyResult<()> {
+    let m = PyModule::new_bound(pm.py(), "bench")?;
+    m.add_class::<MNISTSW>()?;
+    m.add_class::<StepResult>()?;
+    m.add_class::<EvalResult>()?;
+    m.add_function(wrap_pyfunction!(setup, &m)?)?;
+    m.add_function(wrap_pyfunction!(step, &m)?)?;
+    m.add_function(wrap_pyfunction!(eval, &m)?)?;
+    pm.add_submodule(&m)?;
+    Ok(())
 }

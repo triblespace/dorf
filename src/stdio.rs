@@ -25,6 +25,7 @@ pub struct PyWriter(Py<PyAny>);
 
 impl PyWriter {
     /// Construct a new `PyWriter` from a `PyAny` object.
+    #[allow(unused)]
     pub fn buffered(self) -> LineWriter<PyWriter> {
         LineWriter::new(self)
     }
@@ -47,6 +48,7 @@ pub fn stdout() -> PyWriter {
 }
 
 /// Construct a new `PyWriter` for Python's `sys.stderr` stream.
+#[allow(unused)]
 pub fn stderr() -> PyWriter {
     get_stdio_pywriter("stderr")
 }
