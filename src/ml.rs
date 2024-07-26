@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
-use std::sync::Arc;
 use std::convert::AsRef;
 
 use anndists::dist::{DistL2, Distance};
@@ -9,8 +8,7 @@ use anybytes::ByteOwner;
 use digest::consts::U32;
 use digest::Digest;
 
-use tribles::types::Hash;
-use tribles::{BlobParseError, BlobSet, Bloblike, Bytes, Handle, Value};
+use tribles::{ BlobSet, Bloblike, Handle, Value};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 use rand::thread_rng;

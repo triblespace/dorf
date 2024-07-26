@@ -17,5 +17,6 @@ fn bench_mnist_hnsw(fname: String, parallel: bool) {
 fn dorf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     benchmarks::ann_mnist_784_euclidean::bench(m)?;
     m.add_function(wrap_pyfunction!(bench_mnist_hnsw, m)?)?;
+    tribles::tribles_module(m)?;
     Ok(())
 }
