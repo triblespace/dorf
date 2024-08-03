@@ -100,7 +100,6 @@ def __():
 
 @app.cell
 def __(alt, mo, vega_datasets):
-
     # Load some data
     cars = vega_datasets.data.cars()
 
@@ -157,10 +156,15 @@ def __(schemas):
 
 
 @app.cell
-def __():
+def __(os):
     class Id:
         def __init__(self, bytes):
             self.bytes = bytes
+        def gen():
+            return Id(os.urandom(16))
+        def hex(hex):
+            assert len(hex) == 32
+            return Id(bytes.fromhex(hex))
     return Id,
 
 
@@ -218,11 +222,8 @@ def __(Id, RndId, register_converter):
 
 
 @app.cell
-def __(Id):
-    def id(hex):
-        assert len(hex) == 32
-        return Id(bytes.fromhex(hex))
-    return id,
+def __():
+    return
 
 
 @app.cell
@@ -330,7 +331,7 @@ def __(schemas):
             t = type(value)
             b = schemas[(schema, t)].pack(value)
             return Value(schema, b)
-        
+
         def to(self, type):
             global schemas
             return schemas[(self.schema, type)].unpack(self.bytes)
@@ -419,18 +420,19 @@ def __(time):
 
 
 @app.cell
-def __(Value, os, tribles):
+def __(Id, Value, tribles):
     class Namespace:
         def __init__(self, declaration):
             self.declaration = declaration
-            
-        def entity(self, entity, id = None):
-            if id is not None:
+
+        def entity(self, entity):
+            if Id in entity:
+                id = entity[Id]
                 eb = id.bytes
                 assert len(eb) == 16
             else:
-                eb = os.urandom(16);
-            
+                eb = Id.gen().bytes;
+
             tribledata = bytearray()
             for key, value in entity.items():
                 attr_id = self.declaration[key][1];
@@ -442,13 +444,15 @@ def __(Value, os, tribles):
 
                 vb = value.bytes
                 assert len(vb) == 32
-                
+
                 tribledata.extend(eb)
                 tribledata.extend(ab)
                 tribledata.extend(vb)
 
             return tribles.PyTribleSet.from_bytes(bytes(tribledata))
-
+        
+        def pattern(self, ctx, set, entities):
+            return []
     return Namespace,
 
 
@@ -460,13 +464,15 @@ def __(Namespace):
 
 
 @app.cell
-def __(FR256LE, NSDuration, U256BE, id, ns):
+def __(FR256LE, Id, NSDuration, RndId, U256LE, ns):
     experiments = ns({
-        "avg_cpu_time": (NSDuration, id("1C333940F98D0CFCEBFCC408FA35FF92")),
-        "avg_distance": (FR256LE, id("78D9B9230C044FA4E1585AFD14CFB3EE")),
-        "avg_wall_time": (NSDuration, id("999BF50FFECF9C0B62FD23689A6CA0D0")),
-        "change_count": (U256BE, id("AD5DD3F72FA8DD67AF0D0DA5298A98B9")),
-        "layer_explored": (U256BE, id("2DB0F43553543173C42C8AE1573A38DB")),
+        "experiment": (RndId, Id.hex("E3ABE180BD5742D92616671E643FA4E5")),
+        "element_count": (U256LE, Id.hex("A8034B8D0D644DCAA053CA1374AE92A0")),
+        "cpu_time": (NSDuration, Id.hex("1C333940F98D0CFCEBFCC408FA35FF92")),
+        "wall_time": (NSDuration, Id.hex("999BF50FFECF9C0B62FD23689A6CA0D0")),
+        "avg_distance": (FR256LE, Id.hex("78D9B9230C044FA4E1585AFD14CFB3EE")),
+        "change_count": (U256LE, Id.hex("AD5DD3F72FA8DD67AF0D0DA5298A98B9")),
+        "layer_explored": (U256LE, Id.hex("2DB0F43553543173C42C8AE1573A38DB")),
     })
     return experiments,
 
@@ -479,32 +485,6 @@ def __():
 
 
 @app.cell
-def __(Fraction, experiments, id):
-    a = experiments.entity({
-        "layer_explored": 0,
-        "avg_cpu_time": 1000,
-        "avg_distance": Fraction(13, 17)
-    }, id("40604EA0874193604EC87F252125DFE3"))
-    return a,
-
-
-@app.cell
-def __(Fraction, experiments):
-    b = experiments.entity({
-        "layer_explored": 1,
-        "avg_cpu_time": 500,
-        "avg_distance": Fraction(15, 23)
-    })
-    return b,
-
-
-@app.cell
-def __(a, b):
-    a + b
-    return
-
-
-@app.cell
 def __():
     import timeit
     return timeit,
@@ -512,7 +492,8 @@ def __():
 
 @app.cell
 def __():
-    return
+    element_count_exp = 4
+    return element_count_exp,
 
 
 @app.cell
@@ -521,43 +502,90 @@ def __(Fraction, experiments):
         for i in range(size):
             yield experiments.entity({
                 "layer_explored": i,
-                "avg_cpu_time": 500 * i,
-                "avg_wall_time": 600 * i,
+                "cpu_time": 500 * i,
+                "wall_time": 600 * i,
                 "avg_distance": Fraction(i, 1)})
     return gen_data,
 
 
 @app.cell
-def __():
-    return
+def __(gen_data, tribles):
+    def bench_consume(size):
+        set = tribles.PyTribleSet.empty()
+        for entity in gen_data(size):
+            set.consume(entity)
+        return set
+    return bench_consume,
 
 
 @app.cell
-def __(gen_data, timeit, tribles):
-    timeit.timeit(lambda: sum(gen_data(1000), start = tribles.PyTribleSet.empty()), number=1)
-    return
+def __(gen_data, tribles):
+    def bench_mutable_add(size):
+        set = tribles.PyTribleSet.empty()
+        for entity in gen_data(size):
+            set += entity
+        return set
+    return bench_mutable_add,
 
 
 @app.cell
-def __(alt, gen_data, mo, timeit, tribles):
-    benchdata = alt.Data(values=[{"t": timeit.timeit(lambda: sum(gen_data(2 ** i), start = tribles.PyTribleSet.empty()), number=1),
-             "n": (2 ** i) * 4 } for i in range(21)])
-
-    # Create an Altair chart
-    benchchart = alt.Chart(benchdata).mark_point().encode(
-        x='n:Q', # Encoding along the x-axis
-        y='t:Q', # Encoding along the y-axis
-    )
-
-    # Make it reactive ⚡
-    benchchart = mo.ui.altair_chart(benchchart)
-    return benchchart, benchdata
+def __(gen_data, tribles):
+    def bench_sum(size):
+        set = sum(gen_data(size), start = tribles.PyTribleSet.empty())
+        return set
+    return bench_sum,
 
 
 @app.cell
-def __(benchchart, mo):
-    mo.vstack([benchchart, benchchart.value.head()])
-    return
+def __(timeit):
+    def time_ns(l):
+        s = timeit.timeit(lambda: l, number=1)
+        return int(s * 1e9)
+    return time_ns,
+
+
+@app.cell
+def __(
+    Id,
+    bench_consume,
+    element_count_exp,
+    experiments,
+    time_ns,
+    tribles,
+):
+    _experiment = Id.gen()
+    bench_consume_data = sum([experiments.entity({
+        "experiment": _experiment,
+        "wall_time": time_ns(lambda: bench_consume(2 ** i)),
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+    return bench_consume_data,
+
+
+@app.cell
+def __(
+    Id,
+    bench_mutable_add,
+    element_count_exp,
+    experiments,
+    time_ns,
+    tribles,
+):
+    _experiment = Id.gen()
+    bench_mutable_add_data = sum([experiments.entity({
+        "experiment": _experiment,
+        "wall_time": time_ns(lambda: bench_mutable_add(2 ** i)),
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+    return bench_mutable_add_data,
+
+
+@app.cell
+def __(Id, bench_sum, element_count_exp, experiments, time_ns, tribles):
+    _experiment = Id.gen()
+    bench_sum_data = sum([experiments.entity({
+        "experiment": _experiment,
+        "wall_time": time_ns(lambda: bench_sum(2 ** i)),
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+    return bench_sum_data,
 
 
 @app.cell
@@ -589,11 +617,6 @@ def __(RDFNamespace):
 
 
 @app.cell
-def __():
-    return
-
-
-@app.cell
 def __(BNode, Fraction, Graph, Literal, benchns):
     def bench_rdf(n):
         g = Graph()
@@ -605,63 +628,106 @@ def __(BNode, Fraction, Graph, Literal, benchns):
             g.add((eid, benchns.avg_cpu_time, Literal(500 * i)))
             g.add((eid, benchns.avg_wall_time, Literal(600 * i)))
             g.add((eid, benchns.avg_distance, Literal(Fraction(i, 1))))
-        
+
         return g
     return bench_rdf,
 
 
 @app.cell
-def __(alt, bench_rdf, mo, timeit):
-    rdfbenchdata = alt.Data(values=[{"t": timeit.timeit(lambda: bench_rdf(2 ** i), number=1),
-             "n": (2 ** i) * 4 } for i in range(21)])
-
-    # Create an Altair chart
-    rdfbenchchart = alt.Chart(rdfbenchdata).mark_point().encode(
-        x='n:Q', # Encoding along the x-axis
-        y='t:Q', # Encoding along the y-axis
-    )
-
-    # Make it reactive ⚡
-    rdfbenchchart = mo.ui.altair_chart(rdfbenchchart)
-    return rdfbenchchart, rdfbenchdata
+def __(Id, bench_rdf, element_count_exp, experiments, time_ns, tribles):
+    _experiment = Id.gen()
+    bench_rdf_data = sum([experiments.entity({
+        "experiment": _experiment,
+        "wall_time": time_ns(lambda: bench_rdf(2 ** i)),
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+    return bench_rdf_data,
 
 
 @app.cell
-def __(mo, rdfbenchchart):
-    mo.vstack([rdfbenchchart, rdfbenchchart.value.head()])
+def __(
+    bench_consume_data,
+    bench_mutable_add_data,
+    bench_rdf_data,
+    bench_sum_data,
+):
+    bench_combined_data = bench_consume_data + bench_mutable_add_data + bench_sum_data + bench_rdf_data
+    return bench_combined_data,
+
+
+@app.cell
+def __(alt, bench_combined_data, experiments, find, mo):
+    benchdata = alt.Data(values=list(find(
+        lambda ctx, e, t, c:
+            experiments.pattern(ctx, bench_combined_data, [{
+                "experiment": e,
+                "wall_time": t,
+                "element_count": c}]))))
+
+    # Create an Altair chart
+    benchchart = alt.Chart(benchdata).mark_point().encode(
+        x='c:Q', # Encoding along the x-axis
+        y='t:Q', # Encoding along the y-axis
+        color='e:O'
+    )
+
+    # Make it reactive ⚡
+    benchchart = mo.ui.altair_chart(benchchart)
+    return benchchart, benchdata
+
+
+@app.cell
+def __(benchchart, mo):
+    mo.vstack([benchchart, benchchart.value.head()])
     return
 
 
-app._unparsable_cell(
-    r"""
-    def bench_consume(size):
-        let set = tribles.PyTribleSet.empty()
-        for i in range(size):
-            set.consume(experiments.entity({
-                \"layer_explored\": i,
-                \"avg_cpu_time\": 500 * i,
-                \"avg_wall_time\": 600 * i,
-                \"avg_distance\": Fraction(i, 1)}))
-        return set
-    """,
-    name="__"
-)
+@app.cell
+def __():
+    class Query:
+        def __init__(self, constraint):
+            self.constraint = constraint
+
+        def run(self):
+            for c in self.constraint:
+                yield c
+
+    return Query,
 
 
 @app.cell
-def __(alt, bench_consume, mo, timeit):
-    consumebenchdata = alt.Data(values=[{"t": timeit.timeit(lambda: bench_consume(2 ** i), number=1),
-             "n": (2 ** i) * 4 } for i in range(21)])
+def __(Query):
+    def find(query):
+        variable_names = query.__code__.co_varnames[1:]
+        constraint = query(None, *variable_names)
+        execution = Query(constraint)
+        for result in execution.run():
+            yield result
+    return find,
 
-    # Create an Altair chart
-    consumebenchchart = alt.Chart(consumebenchdata).mark_point().encode(
-        x='n:Q', # Encoding along the x-axis
-        y='t:Q', # Encoding along the y-axis
-    )
 
-    # Make it reactive ⚡
-    consumebenchchart = mo.ui.altair_chart(consumebenchchart)
-    return consumebenchchart, consumebenchdata
+@app.cell
+def __(bench_combined_data, experiments, find):
+    find(lambda ctx, experiment, time, count:
+        experiments.pattern(ctx, bench_combined_data, [{
+            "experiment": experiment,
+            "wall_time": time,
+            "element_count": count}]))
+    return
+
+
+@app.cell
+def __(bench_combined_data, experiments, find):
+    list(find(lambda ctx, experiment, time, count:
+        experiments.pattern(ctx, bench_combined_data, [{
+            "experiment": experiment,
+            "wall_time": time,
+            "element_count": count}])))
+    return
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell
