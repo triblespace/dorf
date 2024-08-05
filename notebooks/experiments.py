@@ -726,7 +726,14 @@ def __(bench_combined_data, experiments, find):
 
 
 @app.cell
-def __():
+def __(bench_combined_data, tribles):
+    sum(1 for _ in tribles.solve(bench_combined_data.pattern(0, 1, 2)))
+    return
+
+
+@app.cell
+def __(bench_combined_data, tribles):
+    sum(1 for _ in tribles.solve(tribles.AND([tribles.constant(), bench_combined_data.pattern(0, 1, 2)])))
     return
 
 

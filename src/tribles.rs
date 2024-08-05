@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
-use pyo3::{prelude::*, types::{PyBytes, PyList}};
-use tribles::{self, query::{Binding, ConstantConstraint, Constraint, IntersectionConstraint, Query, Variable, VariableContext}, trible::TRIBLE_LEN, RawValue, TribleSet, Value};
+use pyo3::{prelude::*, types::PyBytes};
+use tribles::{self, query::{Binding, ConstantConstraint, Constraint, IntersectionConstraint, Query, TriblePattern, Variable}, trible::TRIBLE_LEN, RawValue, TribleSet, Value};
 
 #[pyclass]
 pub struct PyTribleSet(tribles::TribleSet);
@@ -51,6 +51,12 @@ impl PyTribleSet {
     pub fn len(&self) -> usize {
         return self.0.eav.len() as usize;
     }
+
+    pub fn pattern(&self, ev: u8, av: u8, vv: u8) -> PyConstraint {
+        PyConstraint {
+            constraint: Arc::new(self.0.pattern(Variable::new(ev), Variable::new(av), Variable::<RawValue>::new(vv)))
+        }
+    }
 }
 
 #[pyclass(frozen)]
@@ -59,14 +65,27 @@ pub struct PyValue {
     schema: [u8; 16]
 }
 
-#[pyclass]
-pub struct PyQuery {
-    query: Query<Arc<dyn Constraint<'static> + Send + Sync>, fn(&Binding) -> PyBinding, PyBinding>
+#[pymethods]
+impl PyValue {
+    pub fn schema(&self) -> PyId {
+        PyId {
+            bytes: self.schema
+        }
+    }
+
+    pub fn bytes(&self) -> Cow<[u8]> {
+        (&self.bytes).into()
+    }
 }
 
 #[pyclass(frozen)]
-pub struct PyBinding {
-    binding: Binding
+pub struct PyId {
+    bytes: [u8; 16],
+}
+
+#[pyclass]
+pub struct PyQuery {
+    query: Query<Arc<dyn Constraint<'static> + Send + Sync>, Box<dyn Fn(&Binding) -> HashMap<u8, PyValue> + Send>, HashMap<u8, PyValue>>
 }
 
 #[pyclass(frozen)]
@@ -89,7 +108,7 @@ pub fn constant(index: u8, constant: &Bound<'_, PyValue>) -> PyConstraint {
 
 /// Build a constraint for the intersection of the provided constraints.
 #[pyfunction]
-pub fn and(constraints: Vec<Py<PyConstraint>>) -> PyConstraint {
+pub fn intersect(constraints: Vec<Py<PyConstraint>>) -> PyConstraint {
     let constraints = constraints.iter().map(|py| py.get().constraint.clone()).collect();
     let constraint = Arc::new(IntersectionConstraint::new(constraints));
 
@@ -98,16 +117,23 @@ pub fn and(constraints: Vec<Py<PyConstraint>>) -> PyConstraint {
     }
 }
 
-fn postprocessing(binding: &Binding) -> PyBinding {
-    PyBinding { binding: binding.clone() }
-}
-
 /// Find solutions for the provided constraint.
 #[pyfunction]
-pub fn solve(constraint: &Bound<'_, PyConstraint>) -> PyQuery {
+pub fn solve(projected: HashMap<u8, Py<PyId>> ,constraint: &Bound<'_, PyConstraint>) -> PyQuery {
     let constraint = constraint.get().constraint.clone();
 
-    let query = tribles::query::Query::new(constraint, postprocessing as fn(&Binding) -> PyBinding);
+    let postprocessing = Box::new(move |binding: &Binding| {
+        let mut map = HashMap::new();
+        for (&k, v) in &projected {
+            map.insert(k, PyValue {
+                bytes: binding.get(k).expect("constraint should contain projected variables"),
+                schema: v.get().bytes
+            });
+        }
+        map
+    }) as Box<dyn Fn(&Binding) -> HashMap<u8, PyValue> + Send>;
+
+    let query = tribles::query::Query::new(constraint, postprocessing);
 
     PyQuery {
         query
@@ -119,7 +145,7 @@ impl PyQuery {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyBinding> {
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<HashMap<u8, PyValue>> {
         slf.query.next()
     }
 }
@@ -129,11 +155,12 @@ pub fn tribles_module(pm: &Bound<'_, PyModule>) -> PyResult<()> {
     let m = PyModule::new_bound(pm.py(), "tribles")?;
     //m.add_class::<PyValue>()?;
     m.add_class::<PyTribleSet>()?;
-    m.add_class::<PyBinding>()?;
+    m.add_class::<PyId>()?;
+    m.add_class::<PyValue>()?;
     m.add_class::<PyConstraint>()?;
     m.add_class::<PyQuery>()?;
     m.add_function(wrap_pyfunction!(constant, &m)?)?;
-    m.add_function(wrap_pyfunction!(and, &m)?)?;
+    m.add_function(wrap_pyfunction!(intersect, &m)?)?;
     m.add_function(wrap_pyfunction!(solve, &m)?)?;
     pm.add_submodule(&m)?;
     Ok(())
