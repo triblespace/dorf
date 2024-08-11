@@ -378,7 +378,7 @@ def __(time):
 
 
 @app.cell
-def __(Id, Value, tribles):
+def __(Id, RndId, Value, Variable, tribles):
     class Namespace:
         def __init__(self, declaration):
             self.declaration = declaration
@@ -399,7 +399,49 @@ def __(Id, Value, tribles):
             return set
 
         def pattern(self, ctx, set, entities):
-            return []
+            constraints = []
+            for entity in entities:
+                if Id in entity:
+                    entity_id = entity[Id]
+                else:
+                    entity_id = ctx.new()
+                if type(entity_id) is Variable:
+                    e_v = entity_id
+                    e_v.annotate_schema(RndId)
+                else:
+                    e_v = ctx.new()
+                    e_v.annotate_schema(RndId)
+                    constraints.append(
+                        tribles.constant(
+                            e_v.index,
+                            Value.of(RndId, entity_id),
+                    ))
+        
+                for key, value in entity.items():
+                    attr_id = self.declaration[key][1]
+                    attr_schema = self.declaration[key][0]
+                    
+                    a_v = ctx.new()
+                    a_v.annotate_schema(RndId)
+                    constraints.append(
+                        tribles.constant(
+                            a_v.index,
+                            Value.of(RndId, attr_id),
+                    ))
+
+                    if type(value) is Variable:
+                        v_v = value
+                        v_v.annotate_schema(attr_schema)
+                    else:
+                        v_v = ctx.new()
+                        v_v.annotate_schema(attr_schema)
+                        constraints.append(
+                            tribles.constant(
+                                v_v.index,
+                                Value.of(attr_schema, value)
+                        ))
+                    constraints.append(set.pattern(e_v.index, a_v.index, v_v.index))
+            return tribles.intersect(constraints)
     return Namespace,
 
 
@@ -629,36 +671,71 @@ def __(benchchart, mo):
 
 
 @app.cell
-def __():
-    class Query:
-        def __init__(self, constraint):
-            self.constraint = constraint
+def __(name):
+    class Variable:
+        def __init__(self, context, index, name=None):
+            self.context = context
+            self.index = index
+            self.name = name
+            self.schema = None
 
-        def run(self):
-            for c in self.constraint:
-                yield c
-    return Query,
+        def annotate_schema(self, schema):
+            if self.schema is None:
+                self.schema = schema
+            else:
+                if self.schema != schema:
+                    raise TypeError(
+                        "variable"
+                        + name
+                        + " annotated with conflicting schemas"
+                        + str(self.schema)
+                        + " and "
+                        + str(schema)
+                    )
+    return Variable,
 
 
 @app.cell
-def __(Query):
+def __(Variable):
+    class VariableContext:
+        def __init__(self):
+            self.variables = []
+
+        def new(self, name=None):
+            i = len(self.variables)
+            assert i < 128
+            v = Variable(self, i, name)
+            self.variables.append(v)
+            return v
+
+        def check_schemas(self):
+            for v in self.variables:
+                if not v.schema:
+                    if v.name:
+                        name = "'" + v.name + "'"
+                    else:
+                        name = "_"
+                    raise TypeError(
+                        "missing schema for variable "
+                        + name
+                        + "/"
+                        + str(v.index)
+                    )
+    return VariableContext,
+
+
+@app.cell
+def __(VariableContext, tribles):
     def find(query):
-        variable_names = query.__code__.co_varnames[1:]
-        constraint = query(None, *variable_names)
-        execution = Query(constraint)
-        for result in execution.run():
+        ctx = VariableContext()
+        projected_variable_names = query.__code__.co_varnames[1:]
+        projected_variables = [ctx.new(n) for n in projected_variable_names]
+        constraint = query(ctx, *projected_variables)
+        ctx.check_schemas()
+        projected_variable_schemas = {v.index: v.schema for v in projected_variables}
+        for result in tribles.solve(projected_variable_schemas, constraint):
             yield result
     return find,
-
-
-@app.cell
-def __(bench_combined_data, experiments, find):
-    find(lambda ctx, experiment, time, count:
-        experiments.pattern(ctx, bench_combined_data, [{
-            "experiment": experiment,
-            "wall_time": time,
-            "element_count": count}]))
-    return
 
 
 @app.cell
@@ -678,8 +755,24 @@ def __(RawBytes, RndId, bench_combined_data, tribles):
 
 
 @app.cell
-def __(RawBytes, RndId, bench_combined_data, tribles):
-    sum(1 for _ in tribles.solve({0: RndId, 1: RndId, 2: RawBytes}, tribles.intersect([tribles.constant(), bench_combined_data.pattern(0, 1, 2)])))
+def __(Id, NSDuration, RndId, Value, bench_combined_data, tribles):
+    sum(
+        r[2].to(int)
+        for r in tribles.solve(
+            {0: RndId, 1: RndId, 2: NSDuration},
+            tribles.intersect(
+                [
+                    tribles.constant(
+                        1,
+                        Value.of(
+                            RndId, Id.hex("999BF50FFECF9C0B62FD23689A6CA0D0")
+                        ),
+                    ),
+                    bench_combined_data.pattern(0, 1, 2),
+                ]
+            ),
+        )
+    )
     return
 
 
