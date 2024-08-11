@@ -56,6 +56,12 @@ def __():
 
 
 @app.cell
+def __(tribles):
+    Id = tribles.Id
+    return Id,
+
+
+@app.cell
 def __():
     mnist_dataset = "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5"
     return mnist_dataset,
@@ -123,77 +129,63 @@ def __(chart, mo):
 
 @app.cell
 def __():
-    def attr(x, y):
-        return (x, y)
-    return attr,
-
-
-@app.cell
-def __(attr):
-    hi = attr("hi", "ho")
-    return hi,
-
-
-@app.cell
-def __():
+    id(int)
     return
 
 
 @app.cell
-def __():
-    schemas = {}
-    return schemas,
+def __(tribles):
+    def register_type(entity_id):
+        def inner(type):
+            tribles.register_type(entity_id, type)
+            return type
+        return inner
+    return register_type,
 
 
 @app.cell
-def __(schemas):
-    def register_converter(converter):
-        global schemas
-        k = (converter.schema, converter.type) 
-        schemas[k] = converter
-        return converter
+def __(Id, fractions, register_type):
+    register_type(Id.hex("A75056BFA2AE677767B1DB8B01AFA322"))(int)
+    register_type(Id.hex("7D06820D69947D76E7177E5DEA4EA773"))(str)
+    register_type(Id.hex("BF11820EC384447B666988490D727A1C"))(Id)
+    register_type(Id.hex("83D62F300ED37850DFFB42E6226117ED"))(fractions.Fraction)
+    return
+
+
+@app.cell
+def __(tribles):
+    def register_converter(schema, type):
+        def inner(converter):
+            tribles.register_converter(schema, type, converter)
+            return converter
+        return inner
     return register_converter,
 
 
 @app.cell
-def __(os):
-    class Id:
-        def __init__(self, bytes):
-            self.bytes = bytes
-        def gen():
-            return Id(os.urandom(16))
-        def hex(hex):
-            assert len(hex) == 32
-            return Id(bytes.fromhex(hex))
-    return Id,
-
-
-@app.cell
-def __():
-    class ValueSchema:
-        @staticmethod
-        def pack(value):
-            return value
-        @staticmethod
-        def unpack(bytes):
-            return bytes
-    return ValueSchema,
-
-
-@app.cell
-def __():
-    class RndId:
-        entity_id = "DFA138FA94D059161C9AB8C800F6FEC4"
-        description = "an random 128 bit id (the first 128bits are zero padding)"
+def __(Id):
+    """an random 128 bit id (the first 128bits are zero padding)"""
+    RndId = Id.hex("DFA138FA94D059161C9AB8C800F6FEC4")
     return RndId,
 
 
 @app.cell
+def __(Id):
+    """32 raw bytes"""
+    RawBytes = Id.hex("7B374E233C226597E8C7D8C6215504F0")
+    return RawBytes,
+
+
+@app.cell
+def __(RndId):
+    help(RndId)
+    return
+
+
+@app.cell
 def __(RndId, register_converter):
-    @register_converter
+    @register_converter(schema = RndId, type = str)
     class RndId_str_Converter:
-        schema = RndId
-        type = str
         @staticmethod
         def pack(value):
             assert len(value) == 32
@@ -206,13 +198,11 @@ def __(RndId, register_converter):
 
 @app.cell
 def __(Id, RndId, register_converter):
-    @register_converter
+    @register_converter(schema = RndId, type = Id)
     class RndId_Id_Converter:
-        schema = RndId
-        type = Id
         @staticmethod
         def pack(value):
-            return bytes(16) + value.bytes
+            return bytes(16) + value.bytes()
         @staticmethod
         def unpack(bytes):
             assert all(v == 0 for v in bytes[0: 16])
@@ -222,48 +212,43 @@ def __(Id, RndId, register_converter):
 
 
 @app.cell
-def __():
+def __(Id):
+    Id
     return
 
 
 @app.cell
-def __():
-    class I256BE:
-        entity_id = "5F80F30E596C2CEF2AFDDFCBD9933AC7"
-        description = "an signed 256bit integer in big endian encoding"
+def __(Id):
+    """an signed 256bit integer in big endian encoding"""
+    I256BE = Id.hex("5F80F30E596C2CEF2AFDDFCBD9933AC7")
     return I256BE,
 
 
 @app.cell
-def __():
-    class I256LE:
-        entity_id = "F5E93737BFD910EDE8902ACAA8493CEE"
-        description = "a signed 256bit integer in little endian encoding"
+def __(Id):
+    """a signed 256bit integer in little endian encoding"""
+    I256LE = Id.hex("F5E93737BFD910EDE8902ACAA8493CEE")
     return I256LE,
 
 
 @app.cell
-def __():
-    class U256BE:
-        entity_id = "5E868BA4B9C06DD12E7F4AA064D1A7C7"
-        description = "an unsigned 256bit integer in big endian encoding"
+def __(Id):
+    """an unsigned 256bit integer in big endian encoding"""
+    U256BE = Id.hex("5E868BA4B9C06DD12E7F4AA064D1A7C7")
     return U256BE,
 
 
 @app.cell
-def __():
-    class U256LE:
-        entity_id = "EC9C2F8C3C3156BD203D92888D7479CD"
-        description = "an unsigned 256bit integer in little endian encoding"
+def __(Id):
+    """an unsigned 256bit integer in little endian encoding"""
+    U256LE = Id.hex("EC9C2F8C3C3156BD203D92888D7479CD")
     return U256LE,
 
 
 @app.cell
 def __(I256BE, register_converter):
-    @register_converter
+    @register_converter(schema = I256BE, type = int)
     class I256BE_Int_Converter:
-        schema = I256BE
-        type = int
         @staticmethod
         def pack(value):
             return value.to_bytes(32, byteorder='big', signed=True)
@@ -275,10 +260,8 @@ def __(I256BE, register_converter):
 
 @app.cell
 def __(I256LE, register_converter):
-    @register_converter
+    @register_converter(schema = I256LE, type = int)
     class I256LE_Int_Converter:
-        schema = I256LE
-        type = int
         @staticmethod
         def pack(value):
             return value.to_bytes(32, byteorder='little', signed=True)
@@ -290,10 +273,8 @@ def __(I256LE, register_converter):
 
 @app.cell
 def __(U256BE, register_converter):
-    @register_converter
+    @register_converter(schema = U256BE, type = int)
     class U256BE_Int_Converter:
-        schema = U256BE
-        type = int
         @staticmethod
         def pack(value):
             return value.to_bytes(32, byteorder='big', signed=False)
@@ -305,10 +286,8 @@ def __(U256BE, register_converter):
 
 @app.cell
 def __(U256LE, register_converter):
-    @register_converter
+    @register_converter(schema = U256LE, type = int)
     class U256LE_Int_Converter:
-        schema = U256LE
-        type = int
         @staticmethod
         def pack(value):
             return value.to_bytes(32, byteorder='little', signed=False)
@@ -319,39 +298,22 @@ def __(U256LE, register_converter):
 
 
 @app.cell
-def __(schemas):
-    class Value:
-        def __init__(self, schema, bytes):
-            self.schema = schema
-            self.bytes = bytes
-
-        @staticmethod
-        def of(schema, value):
-            global schemas
-            t = type(value)
-            b = schemas[(schema, t)].pack(value)
-            return Value(schema, b)
-
-        def to(self, type):
-            global schemas
-            return schemas[(self.schema, type)].unpack(self.bytes)
+def __(tribles):
+    Value = tribles.Value
     return Value,
 
 
 @app.cell
-def __():
-    class NSDuration:
-        entity_id = "BD1DA74AABF1D01A5CF4EEF3683B1EC5"
-        description = "a time duration in nanoseconds stored as a signed 256bit big endian integer"
+def __(Id):
+    """a time duration in nanoseconds stored as a signed 256bit big endian integer"""
+    NSDuration = Id.hex("BD1DA74AABF1D01A5CF4EEF3683B1EC5")
     return NSDuration,
 
 
 @app.cell
 def __(NSDuration, register_converter):
-    @register_converter
+    @register_converter(schema = NSDuration, type = int)
     class NSDuration_Int_Converter:
-        schema = NSDuration
-        type = int
         @staticmethod
         def pack(value):
             return value.to_bytes(32, byteorder='big', signed=False)
@@ -362,19 +324,16 @@ def __(NSDuration, register_converter):
 
 
 @app.cell
-def __():
-    class FR256LE:
-        entity_id = "77694E74654A039625FA5911381F3897"
-        description = "a unitless fraction stored as a (numerator, denominator) pair of signed 128bit little endian integers"
+def __(Id):
+    """a unitless fraction stored as a (numerator, denominator) pair of signed 128bit little endian integers"""
+    FR256LE = Id.hex("77694E74654A039625FA5911381F3897")
     return FR256LE,
 
 
 @app.cell
 def __(FR256LE, fractions, register_converter):
-    @register_converter
+    @register_converter(schema = FR256LE, type = fractions.Fraction)
     class FR128LE_Fraction_Converter:
-        schema = FR256LE
-        type = fractions.Fraction
         @staticmethod
         def pack(value):
             n, d = value.as_integer_ratio()
@@ -396,8 +355,7 @@ def __(FR256LE, Value, fractions):
 
 
 @app.cell
-def __(U256LE, Value):
-    Value(U256LE, bytes(32)).to(int)
+def __():
     return
 
 
@@ -426,31 +384,20 @@ def __(Id, Value, tribles):
             self.declaration = declaration
 
         def entity(self, entity):
+            set = tribles.TribleSet.empty()
             if Id in entity:
-                id = entity[Id]
-                eb = id.bytes
-                assert len(eb) == 16
+                entity_id = entity[Id]
             else:
-                eb = Id.gen().bytes;
+                entity_id = Id.genid()
 
-            tribledata = bytearray()
             for key, value in entity.items():
-                attr_id = self.declaration[key][1];
-                attr_schema = self.declaration[key][0];
-                value = Value.of(attr_schema, value);
+                attr_id = self.declaration[key][1]
+                attr_schema = self.declaration[key][0]
+                value = Value.of(attr_schema, value)
+                set.add(entity_id, attr_id, value)
 
-                ab = attr_id.bytes
-                assert len(eb) == 16
+            return set
 
-                vb = value.bytes
-                assert len(vb) == 32
-
-                tribledata.extend(eb)
-                tribledata.extend(ab)
-                tribledata.extend(vb)
-
-            return tribles.PyTribleSet.from_bytes(bytes(tribledata))
-        
         def pattern(self, ctx, set, entities):
             return []
     return Namespace,
@@ -553,11 +500,11 @@ def __(
     time_ns,
     tribles,
 ):
-    _experiment = Id.gen()
+    _experiment = Id.genid()
     bench_consume_data = sum([experiments.entity({
         "experiment": _experiment,
         "wall_time": time_ns(lambda: bench_consume(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
     return bench_consume_data,
 
 
@@ -570,21 +517,21 @@ def __(
     time_ns,
     tribles,
 ):
-    _experiment = Id.gen()
+    _experiment = Id.genid()
     bench_mutable_add_data = sum([experiments.entity({
         "experiment": _experiment,
         "wall_time": time_ns(lambda: bench_mutable_add(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
     return bench_mutable_add_data,
 
 
 @app.cell
 def __(Id, bench_sum, element_count_exp, experiments, time_ns, tribles):
-    _experiment = Id.gen()
+    _experiment = Id.genid()
     bench_sum_data = sum([experiments.entity({
         "experiment": _experiment,
         "wall_time": time_ns(lambda: bench_sum(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
     return bench_sum_data,
 
 
@@ -635,11 +582,11 @@ def __(BNode, Fraction, Graph, Literal, benchns):
 
 @app.cell
 def __(Id, bench_rdf, element_count_exp, experiments, time_ns, tribles):
-    _experiment = Id.gen()
+    _experiment = Id.genid()
     bench_rdf_data = sum([experiments.entity({
         "experiment": _experiment,
         "wall_time": time_ns(lambda: bench_rdf(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.PyTribleSet.empty())
+        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
     return bench_rdf_data,
 
 
@@ -690,7 +637,6 @@ def __():
         def run(self):
             for c in self.constraint:
                 yield c
-
     return Query,
 
 
@@ -726,14 +672,14 @@ def __(bench_combined_data, experiments, find):
 
 
 @app.cell
-def __(bench_combined_data, tribles):
-    sum(1 for _ in tribles.solve(bench_combined_data.pattern(0, 1, 2)))
+def __(RawBytes, RndId, bench_combined_data, tribles):
+    sum(1 for _ in tribles.solve({0: RndId, 1: RndId, 2: RawBytes}, bench_combined_data.pattern(0, 1, 2)))
     return
 
 
 @app.cell
-def __(bench_combined_data, tribles):
-    sum(1 for _ in tribles.solve(tribles.AND([tribles.constant(), bench_combined_data.pattern(0, 1, 2)])))
+def __(RawBytes, RndId, bench_combined_data, tribles):
+    sum(1 for _ in tribles.solve({0: RndId, 1: RndId, 2: RawBytes}, tribles.intersect([tribles.constant(), bench_combined_data.pattern(0, 1, 2)])))
     return
 
 

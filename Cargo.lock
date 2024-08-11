@@ -601,6 +601,7 @@ dependencies = [
  "digest",
  "env_logger",
  "hdf5",
+ "hex",
  "hnsw_rs",
  "log",
  "ndarray",
@@ -2515,7 +2516,7 @@ dependencies = [
 [[package]]
 name = "tribles"
 version = "0.2.0-alpha-1"
-source = "git+https://github.com/triblesspace/tribles-rust.git#3f6ca0bf9d9fafd6867ca4b6f3a814ba763832d2"
+source = "git+https://github.com/triblesspace/tribles-rust.git#e7e05ee803c5a1038b98ffac9093c73b9bc1ac56"
 dependencies = [
  "anybytes",
  "anyhow",
