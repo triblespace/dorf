@@ -91,6 +91,10 @@ impl PyId {
         })
     }
 
+    pub fn to_hex(&self) -> String {
+        hex::encode_upper(self.bytes)
+    }
+
     pub fn bytes(&self) -> Cow<[u8]> {
         (&self.bytes).into()
     }
@@ -148,7 +152,8 @@ impl PyValue {
         let Some(converter) = converters.get(&(self.schema, type_id)) else {
             return Err(PyErr::new::<PyKeyError, _>("converter should be registered first"));
         };
-        converter.call_method_bound(py, intern!(py, "unpack"), (self.bytes,), None)
+        let bytes = PyBytes::new_bound(py, &self.bytes);
+        converter.call_method_bound(py, intern!(py, "unpack"), (bytes,), None)
     }
 
     pub fn schema(&self) -> PyId {
@@ -197,6 +202,10 @@ impl PyTribleSet {
         set.union(other.borrow().0.clone());
     }
 
+    pub fn __len__(&self) -> usize {
+        return self.0.eav.len() as usize;
+    }
+
     pub fn fork(&mut self) -> Self {
         PyTribleSet(self.0.clone())
     }
@@ -211,10 +220,6 @@ impl PyTribleSet {
         set.union(other_set);
     }
 
-    pub fn len(&self) -> usize {
-        return self.0.eav.len() as usize;
-    }
-
     pub fn pattern(&self, ev: u8, av: u8, vv: u8) -> PyConstraint {
         PyConstraint {
             constraint: Arc::new(self.0.pattern(Variable::new(ev), Variable::new(av), Variable::<RawValue>::new(vv)))
@@ -224,7 +229,7 @@ impl PyTribleSet {
 
 #[pyclass(name = "Query")]
 pub struct PyQuery {
-    query: Query<Arc<dyn Constraint<'static> + Send + Sync>, Box<dyn Fn(&Binding) -> HashMap<u8, PyValue> + Send>, HashMap<u8, PyValue>>
+    query: Query<Arc<dyn Constraint<'static> + Send + Sync>, Box<dyn Fn(&Binding) -> Vec<PyValue> + Send>, Vec<PyValue>>
 }
 
 #[pyclass(frozen)]
@@ -258,19 +263,19 @@ pub fn intersect(constraints: Vec<Py<PyConstraint>>) -> PyConstraint {
 
 /// Find solutions for the provided constraint.
 #[pyfunction]
-pub fn solve(projected: HashMap<u8, Py<PyId>> ,constraint: &Bound<'_, PyConstraint>) -> PyQuery {
+pub fn solve(projected: Vec<(u8, Py<PyId>)> ,constraint: &Bound<'_, PyConstraint>) -> PyQuery {
     let constraint = constraint.get().constraint.clone();
 
     let postprocessing = Box::new(move |binding: &Binding| {
-        let mut map = HashMap::new();
-        for (&k, v) in &projected {
-            map.insert(k, PyValue {
-                bytes: binding.get(k).expect("constraint should contain projected variables"),
+        let mut vec = vec![];
+        for (k, v) in &projected {
+            vec.push(PyValue {
+                bytes: binding.get(*k).expect("constraint should contain projected variables"),
                 schema: v.get().bytes
             });
         }
-        map
-    }) as Box<dyn Fn(&Binding) -> HashMap<u8, PyValue> + Send>;
+        vec
+    }) as Box<dyn Fn(&Binding) -> Vec<PyValue> + Send>;
 
     let query = tribles::query::Query::new(constraint, postprocessing);
 
@@ -284,7 +289,7 @@ impl PyQuery {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<HashMap<u8, PyValue>> {
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<Vec<PyValue>> {
         slf.query.next()
     }
 }

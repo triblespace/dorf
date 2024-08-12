@@ -5,22 +5,6 @@ app = marimo.App()
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## dataset
-         * distances (nbojects, dim)   f32 matrix    for tests objects
-         * neighbors (nbobjects, nbnearest) int32 matrix giving the num of nearest neighbors in train data
-          * test      (nbobjects, dim)   f32 matrix  test data
-          * train     (nbobjects, dim)   f32 matrix  train data
-
-        load hdf5 data file benchmarks from https://github.com/erikbern/ann-benchmarks
-        """
-    )
-    return
-
-
-@app.cell
 def __():
     import maturin_import_hook
     maturin_import_hook.install(settings=maturin_import_hook.MaturinSettings(release=True))
@@ -47,6 +31,31 @@ def __():
 
 @app.cell
 def __():
+    import time
+    return time,
+
+
+@app.cell
+def __():
+    import timeit
+    return timeit,
+
+
+@app.cell
+def __():
+    import fractions
+    from fractions import Fraction
+    return Fraction, fractions
+
+
+@app.cell
+def __():
+    import altair as alt
+    return alt,
+
+
+@app.cell
+def __():
     import dorf
     import importlib
     importlib.reload(dorf)
@@ -56,81 +65,174 @@ def __():
 
 
 @app.cell
+def __(mo):
+    mo.md("# Tribles")
+    return
+
+
+@app.cell
+def __(tribles):
+    TribleSet = tribles.TribleSet
+    return TribleSet,
+
+
+@app.cell
 def __(tribles):
     Id = tribles.Id
     return Id,
 
 
 @app.cell
-def __():
-    mnist_dataset = "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5"
-    return mnist_dataset,
+def __(tribles):
+    Value = tribles.Value
+    return Value,
 
 
 @app.cell
-def __():
-    #dorf.bench_mnist_hnsw(mnist_dataset, True)
-    return
+def __(name):
+    class Variable:
+        def __init__(self, context, index, name=None):
+            self.context = context
+            self.index = index
+            self.name = name
+            self.schema = None
+
+        def annotate_schema(self, schema):
+            if self.schema is None:
+                self.schema = schema
+            else:
+                if self.schema != schema:
+                    raise TypeError(
+                        "variable"
+                        + name
+                        + " annotated with conflicting schemas"
+                        + str(self.schema)
+                        + " and "
+                        + str(schema)
+                    )
+    return Variable,
 
 
 @app.cell
-def __(bench, mnist_dataset):
-    sw = bench.setup(mnist_dataset, 16)
-    return sw,
+def __(Id, RndId, Value, Variable, tribles):
+    class Namespace:
+        def __init__(self, declaration):
+            self.declaration = declaration
+
+        def entity(self, entity):
+            set = tribles.TribleSet.empty()
+            if Id in entity:
+                entity_id = entity[Id]
+            else:
+                entity_id = Id.genid()
+
+            for key, value in entity.items():
+                if key is Id:
+                    continue
+                attr_id = self.declaration[key][1]
+                attr_schema = self.declaration[key][0]
+                value = Value.of(attr_schema, value)
+                set.add(entity_id, attr_id, value)
+
+            return set
+
+        def pattern(self, ctx, set, entities):
+            constraints = []
+            for entity in entities:
+                if Id in entity:
+                    entity_id = entity[Id]
+                else:
+                    entity_id = ctx.new()
+                if type(entity_id) is Variable:
+                    e_v = entity_id
+                    e_v.annotate_schema(RndId)
+                else:
+                    e_v = ctx.new()
+                    e_v.annotate_schema(RndId)
+                    constraints.append(
+                        tribles.constant(
+                            e_v.index,
+                            Value.of(RndId, entity_id),
+                    ))
+        
+                for key, value in entity.items():
+                    if key is Id:
+                        continue
+                    attr_id = self.declaration[key][1]
+                    attr_schema = self.declaration[key][0]
+                    
+                    a_v = ctx.new()
+                    a_v.annotate_schema(RndId)
+                    constraints.append(
+                        tribles.constant(
+                            a_v.index,
+                            Value.of(RndId, attr_id),
+                    ))
+
+                    if type(value) is Variable:
+                        v_v = value
+                        v_v.annotate_schema(attr_schema)
+                    else:
+                        v_v = ctx.new()
+                        v_v.annotate_schema(attr_schema)
+                        constraints.append(
+                            tribles.constant(
+                                v_v.index,
+                                Value.of(attr_schema, value)
+                        ))
+                    constraints.append(set.pattern(e_v.index, a_v.index, v_v.index))
+            return tribles.intersect(constraints)
+    return Namespace,
 
 
 @app.cell
-def __(bench, mnist_dataset, sw):
-    e = bench.eval(sw, mnist_dataset, 1)
-    return e,
+def __(Namespace):
+    def ns(declaration):
+        return Namespace(declaration)
+    return ns,
 
 
 @app.cell
-def __(e):
-    e.avg_distance
-    return
+def __(Variable):
+    class VariableContext:
+        def __init__(self):
+            self.variables = []
+
+        def new(self, name=None):
+            i = len(self.variables)
+            assert i < 128
+            v = Variable(self, i, name)
+            self.variables.append(v)
+            return v
+
+        def check_schemas(self):
+            for v in self.variables:
+                if not v.schema:
+                    if v.name:
+                        name = "'" + v.name + "'"
+                    else:
+                        name = "_"
+                    raise TypeError(
+                        "missing schema for variable "
+                        + name
+                        + "/"
+                        + str(v.index)
+                    )
+    return VariableContext,
 
 
 @app.cell
-def __(e):
-    e.avg_cpu_time
-    return
-
-
-@app.cell
-def __():
-    import altair as alt
-    import vega_datasets
-    return alt, vega_datasets
-
-
-@app.cell
-def __(alt, mo, vega_datasets):
-    # Load some data
-    cars = vega_datasets.data.cars()
-
-    # Create an Altair chart
-    chart = alt.Chart(cars).mark_point().encode(
-        x='Horsepower', # Encoding along the x-axis
-        y='Miles_per_Gallon', # Encoding along the y-axis
-        color='Origin', # Category encoding by color
-    )
-
-    # Make it reactive ⚡
-    chart = mo.ui.altair_chart(chart)
-    return cars, chart
-
-
-@app.cell
-def __(chart, mo):
-    mo.vstack([chart, chart.value.head()])
-    return
-
-
-@app.cell
-def __():
-    id(int)
-    return
+def __(VariableContext, tribles):
+    def find(query):
+        ctx = VariableContext()
+        projected_variable_names = query.__code__.co_varnames[1:]
+        projected_variables = [ctx.new(n) for n in projected_variable_names]
+        constraint = query(ctx, *projected_variables)
+        ctx.check_schemas()
+        projected_variable_schemas = [(v.index, v.schema) for v in projected_variables]
+        for result in tribles.solve(projected_variable_schemas, constraint):
+            yield tuple(result)
+    return find,
 
 
 @app.cell
@@ -144,15 +246,6 @@ def __(tribles):
 
 
 @app.cell
-def __(Id, fractions, register_type):
-    register_type(Id.hex("A75056BFA2AE677767B1DB8B01AFA322"))(int)
-    register_type(Id.hex("7D06820D69947D76E7177E5DEA4EA773"))(str)
-    register_type(Id.hex("BF11820EC384447B666988490D727A1C"))(Id)
-    register_type(Id.hex("83D62F300ED37850DFFB42E6226117ED"))(fractions.Fraction)
-    return
-
-
-@app.cell
 def __(tribles):
     def register_converter(schema, type):
         def inner(converter):
@@ -160,6 +253,15 @@ def __(tribles):
             return converter
         return inner
     return register_converter,
+
+
+@app.cell
+def __(Id, fractions, register_type):
+    register_type(Id.hex("A75056BFA2AE677767B1DB8B01AFA322"))(int)
+    register_type(Id.hex("7D06820D69947D76E7177E5DEA4EA773"))(str)
+    register_type(Id.hex("BF11820EC384447B666988490D727A1C"))(Id)
+    register_type(Id.hex("83D62F300ED37850DFFB42E6226117ED"))(fractions.Fraction)
+    return
 
 
 @app.cell
@@ -177,9 +279,52 @@ def __(Id):
 
 
 @app.cell
-def __(RndId):
-    help(RndId)
-    return
+def __(Id):
+    """A \0 terminated short utf-8 string that fits of up to 32 bytes of characters"""
+    ShortString = Id.hex("BDDBE1EDBCD3EF7B74CEB109DE67A47B")
+    return ShortString,
+
+
+@app.cell
+def __(Id):
+    """an signed 256bit integer in big endian encoding"""
+    I256BE = Id.hex("5F80F30E596C2CEF2AFDDFCBD9933AC7")
+    return I256BE,
+
+
+@app.cell
+def __(Id):
+    """a signed 256bit integer in little endian encoding"""
+    I256LE = Id.hex("F5E93737BFD910EDE8902ACAA8493CEE")
+    return I256LE,
+
+
+@app.cell
+def __(Id):
+    """an unsigned 256bit integer in big endian encoding"""
+    U256BE = Id.hex("5E868BA4B9C06DD12E7F4AA064D1A7C7")
+    return U256BE,
+
+
+@app.cell
+def __(Id):
+    """an unsigned 256bit integer in little endian encoding"""
+    U256LE = Id.hex("EC9C2F8C3C3156BD203D92888D7479CD")
+    return U256LE,
+
+
+@app.cell
+def __(Id):
+    """a time duration in nanoseconds stored as a signed 256bit big endian integer"""
+    NSDuration = Id.hex("BD1DA74AABF1D01A5CF4EEF3683B1EC5")
+    return NSDuration,
+
+
+@app.cell
+def __(Id):
+    """a unitless fraction stored as a (numerator, denominator) pair of signed 128bit little endian integers"""
+    FR256LE = Id.hex("77694E74654A039625FA5911381F3897")
+    return FR256LE,
 
 
 @app.cell
@@ -212,37 +357,24 @@ def __(Id, RndId, register_converter):
 
 
 @app.cell
-def __(Id):
-    Id
-    return
+def __(ShortString, register_converter):
+    @register_converter(schema = ShortString, type = str)
+    class ShortString_str_Converter:
+        @staticmethod
+        def pack(value):
+            b = bytes(value, 'utf-8')
+            assert len(b) <= 32
+            assert 0 not in b
+            return b + bytes(32 - len(b))
+        @staticmethod
+        def unpack(bytes):
+            try:
+                end = bytes.index(0)
+                return bytes[0:end].decode('utf-8')
+            except:
+                return bytes.decode('utf-8')
 
-
-@app.cell
-def __(Id):
-    """an signed 256bit integer in big endian encoding"""
-    I256BE = Id.hex("5F80F30E596C2CEF2AFDDFCBD9933AC7")
-    return I256BE,
-
-
-@app.cell
-def __(Id):
-    """a signed 256bit integer in little endian encoding"""
-    I256LE = Id.hex("F5E93737BFD910EDE8902ACAA8493CEE")
-    return I256LE,
-
-
-@app.cell
-def __(Id):
-    """an unsigned 256bit integer in big endian encoding"""
-    U256BE = Id.hex("5E868BA4B9C06DD12E7F4AA064D1A7C7")
-    return U256BE,
-
-
-@app.cell
-def __(Id):
-    """an unsigned 256bit integer in little endian encoding"""
-    U256LE = Id.hex("EC9C2F8C3C3156BD203D92888D7479CD")
-    return U256LE,
+    return ShortString_str_Converter,
 
 
 @app.cell
@@ -298,19 +430,6 @@ def __(U256LE, register_converter):
 
 
 @app.cell
-def __(tribles):
-    Value = tribles.Value
-    return Value,
-
-
-@app.cell
-def __(Id):
-    """a time duration in nanoseconds stored as a signed 256bit big endian integer"""
-    NSDuration = Id.hex("BD1DA74AABF1D01A5CF4EEF3683B1EC5")
-    return NSDuration,
-
-
-@app.cell
 def __(NSDuration, register_converter):
     @register_converter(schema = NSDuration, type = int)
     class NSDuration_Int_Converter:
@@ -321,13 +440,6 @@ def __(NSDuration, register_converter):
         def unpack(bytes):
             return int.from_bytes(bytes, byteorder='big', signed=False)
     return NSDuration_Int_Converter,
-
-
-@app.cell
-def __(Id):
-    """a unitless fraction stored as a (numerator, denominator) pair of signed 128bit little endian integers"""
-    FR256LE = Id.hex("77694E74654A039625FA5911381F3897")
-    return FR256LE,
 
 
 @app.cell
@@ -349,112 +461,9 @@ def __(FR256LE, fractions, register_converter):
 
 
 @app.cell
-def __(FR256LE, Value, fractions):
-    Value.of(FR256LE, fractions.Fraction(-123, 314)).to(fractions.Fraction)
-    return
-
-
-@app.cell
-def __():
-    return
-
-
-@app.cell
-def __(U256LE, Value):
-    Value.of(U256LE, 1).to(int)
-    return
-
-
-@app.cell
-def __():
-    import time
-    return time,
-
-
-@app.cell
-def __(time):
-    type(time.time_ns())
-    return
-
-
-@app.cell
-def __(Id, RndId, Value, Variable, tribles):
-    class Namespace:
-        def __init__(self, declaration):
-            self.declaration = declaration
-
-        def entity(self, entity):
-            set = tribles.TribleSet.empty()
-            if Id in entity:
-                entity_id = entity[Id]
-            else:
-                entity_id = Id.genid()
-
-            for key, value in entity.items():
-                attr_id = self.declaration[key][1]
-                attr_schema = self.declaration[key][0]
-                value = Value.of(attr_schema, value)
-                set.add(entity_id, attr_id, value)
-
-            return set
-
-        def pattern(self, ctx, set, entities):
-            constraints = []
-            for entity in entities:
-                if Id in entity:
-                    entity_id = entity[Id]
-                else:
-                    entity_id = ctx.new()
-                if type(entity_id) is Variable:
-                    e_v = entity_id
-                    e_v.annotate_schema(RndId)
-                else:
-                    e_v = ctx.new()
-                    e_v.annotate_schema(RndId)
-                    constraints.append(
-                        tribles.constant(
-                            e_v.index,
-                            Value.of(RndId, entity_id),
-                    ))
-        
-                for key, value in entity.items():
-                    attr_id = self.declaration[key][1]
-                    attr_schema = self.declaration[key][0]
-                    
-                    a_v = ctx.new()
-                    a_v.annotate_schema(RndId)
-                    constraints.append(
-                        tribles.constant(
-                            a_v.index,
-                            Value.of(RndId, attr_id),
-                    ))
-
-                    if type(value) is Variable:
-                        v_v = value
-                        v_v.annotate_schema(attr_schema)
-                    else:
-                        v_v = ctx.new()
-                        v_v.annotate_schema(attr_schema)
-                        constraints.append(
-                            tribles.constant(
-                                v_v.index,
-                                Value.of(attr_schema, value)
-                        ))
-                    constraints.append(set.pattern(e_v.index, a_v.index, v_v.index))
-            return tribles.intersect(constraints)
-    return Namespace,
-
-
-@app.cell
-def __(Namespace):
-    def ns(declaration):
-        return Namespace(declaration)
-    return ns,
-
-
-@app.cell
-def __(FR256LE, Id, NSDuration, RndId, U256LE, ns):
+def __(FR256LE, Id, NSDuration, RndId, ShortString, U256LE, ns):
     experiments = ns({
+        "label": (ShortString, Id.hex("EC80E5FBDF856CD47347D1BCFB5E0D3E")),
         "experiment": (RndId, Id.hex("E3ABE180BD5742D92616671E643FA4E5")),
         "element_count": (U256LE, Id.hex("A8034B8D0D644DCAA053CA1374AE92A0")),
         "cpu_time": (NSDuration, Id.hex("1C333940F98D0CFCEBFCC408FA35FF92")),
@@ -467,22 +476,9 @@ def __(FR256LE, Id, NSDuration, RndId, U256LE, ns):
 
 
 @app.cell
-def __():
-    import fractions
-    from fractions import Fraction
-    return Fraction, fractions
-
-
-@app.cell
-def __():
-    import timeit
-    return timeit,
-
-
-@app.cell
-def __():
-    element_count_exp = 4
-    return element_count_exp,
+def __(mo):
+    mo.md("# Benchmarks")
+    return
 
 
 @app.cell
@@ -498,9 +494,9 @@ def __(Fraction, experiments):
 
 
 @app.cell
-def __(gen_data, tribles):
+def __(TribleSet, gen_data):
     def bench_consume(size):
-        set = tribles.PyTribleSet.empty()
+        set = TribleSet.empty()
         for entity in gen_data(size):
             set.consume(entity)
         return set
@@ -508,9 +504,9 @@ def __(gen_data, tribles):
 
 
 @app.cell
-def __(gen_data, tribles):
+def __(TribleSet, gen_data):
     def bench_mutable_add(size):
-        set = tribles.PyTribleSet.empty()
+        set = TribleSet.empty()
         for entity in gen_data(size):
             set += entity
         return set
@@ -518,9 +514,9 @@ def __(gen_data, tribles):
 
 
 @app.cell
-def __(gen_data, tribles):
+def __(TribleSet, gen_data):
     def bench_sum(size):
-        set = sum(gen_data(size), start = tribles.PyTribleSet.empty())
+        set = sum(gen_data(size), start = TribleSet.empty())
         return set
     return bench_sum,
 
@@ -528,58 +524,116 @@ def __(gen_data, tribles):
 @app.cell
 def __(timeit):
     def time_ns(l):
-        s = timeit.timeit(lambda: l, number=1)
+        s = timeit.timeit(l, number=1)
         return int(s * 1e9)
     return time_ns,
 
 
 @app.cell
-def __(
-    Id,
-    bench_consume,
-    element_count_exp,
-    experiments,
-    time_ns,
-    tribles,
-):
-    _experiment = Id.genid()
-    bench_consume_data = sum([experiments.entity({
-        "experiment": _experiment,
-        "wall_time": time_ns(lambda: bench_consume(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
-    return bench_consume_data,
+def __(mo):
+    mo.md("### Insert")
+    return
 
 
 @app.cell
-def __(
-    Id,
-    bench_mutable_add,
-    element_count_exp,
-    experiments,
-    time_ns,
-    tribles,
-):
+def __(Id, bench_consume, element_count_exp, experiments, time_ns):
     _experiment = Id.genid()
-    bench_mutable_add_data = sum([experiments.entity({
-        "experiment": _experiment,
-        "wall_time": time_ns(lambda: bench_mutable_add(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
-    return bench_mutable_add_data,
+    bench_insert_consume_data = experiments.entity({Id: _experiment, "label": "consume"})
+    for _i in range(element_count_exp):
+        bench_insert_consume_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": time_ns(lambda: bench_consume(2**_i)),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_insert_consume_data,
 
 
 @app.cell
-def __(Id, bench_sum, element_count_exp, experiments, time_ns, tribles):
+def __(Id, bench_mutable_add, element_count_exp, experiments, time_ns):
     _experiment = Id.genid()
-    bench_sum_data = sum([experiments.entity({
-        "experiment": _experiment,
-        "wall_time": time_ns(lambda: bench_sum(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
-    return bench_sum_data,
+    bench_insert_mutable_add_data = experiments.entity(
+        {Id: _experiment, "label": "mutable_add"}
+    )
+    for _i in range(element_count_exp):
+        bench_insert_mutable_add_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": time_ns(lambda: bench_mutable_add(2**_i)),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_insert_mutable_add_data,
+
+
+@app.cell
+def __(Id, bench_sum, element_count_exp, experiments, time_ns):
+    _experiment = Id.genid()
+    bench_insert_sum_data = experiments.entity({Id: _experiment, "label": "sum"})
+    for _i in range(element_count_exp):
+        bench_insert_sum_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": time_ns(lambda: bench_sum(2**_i)),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_insert_sum_data,
 
 
 @app.cell
 def __(mo):
-    mo.md("# RDFLib")
+    mo.md("### Query")
+    return
+
+
+@app.cell
+def __(bench_consume, experiments, find, time_ns):
+    def bench_query_find(size):
+        set = bench_consume(size)
+        return time_ns(
+            lambda: sum(
+                [
+                    1
+                    for _ in find(
+                        lambda ctx, layer, cpu, wall, distance: experiments.pattern(
+                            ctx,
+                            set,
+                            [
+                                {
+                                    "layer_explored": layer,
+                                    "cpu_time": cpu,
+                                    "wall_time": wall,
+                                    "avg_distance": distance,
+                                }
+                            ],
+                        )
+                    )
+                ]
+            )
+        )
+    return bench_query_find,
+
+
+@app.cell
+def __(Id, bench_query_find, element_count_exp, experiments):
+    _experiment = Id.genid()
+    bench_query_find_data = experiments.entity({Id: _experiment, "label": "find"})
+    for _i in range(element_count_exp):
+        bench_query_find_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": bench_query_find(2**_i),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_query_find_data,
+
+
+@app.cell
+def __(mo):
+    mo.md("## RDFLib")
     return
 
 
@@ -587,6 +641,12 @@ def __(mo):
 def __():
     from rdflib import Graph, URIRef, BNode, Literal, Namespace as RDFNamespace
     return BNode, Graph, Literal, RDFNamespace, URIRef
+
+
+@app.cell
+def __():
+    from rdflib.plugins import sparql
+    return sparql,
 
 
 @app.cell
@@ -603,6 +663,12 @@ def __(RDFNamespace):
         rdf_avg_wall_time,
         rdf_layer_explored,
     )
+
+
+@app.cell
+def __(mo):
+    mo.md("### Insert")
+    return
 
 
 @app.cell
@@ -623,40 +689,140 @@ def __(BNode, Fraction, Graph, Literal, benchns):
 
 
 @app.cell
-def __(Id, bench_rdf, element_count_exp, experiments, time_ns, tribles):
+def __(Id, bench_rdf, element_count_exp, experiments, time_ns):
     _experiment = Id.genid()
-    bench_rdf_data = sum([experiments.entity({
-        "experiment": _experiment,
-        "wall_time": time_ns(lambda: bench_rdf(2 ** i)),
-        "element_count": (2 ** i) * 4 }) for i in range(element_count_exp)], tribles.TribleSet.empty())
-    return bench_rdf_data,
+    bench_insert_rdf_data = experiments.entity({Id: _experiment, "label": "RDFLib"})
+    for _i in range(element_count_exp):
+        bench_insert_rdf_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": time_ns(lambda: bench_rdf(2**_i)),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_insert_rdf_data,
+
+
+@app.cell
+def __(mo):
+    mo.md("### Query")
+    return
+
+
+@app.cell
+def __(bench_rdf, time_ns):
+    def bench_rdf_query_adhoc(n):
+        g = bench_rdf(n)
+
+        query = """
+        SELECT ?layer ?cpu ?wall ?distance
+        WHERE {
+            ?a benchmark:layer_explored ?layer;
+               benchmark:avg_cpu_time ?cpu;
+               benchmark:avg_wall_time ?wall;
+               benchmark:avg_distance ?distance .
+        }"""
+        return time_ns(lambda: sum([1 for _ in g.query(query)]))
+    return bench_rdf_query_adhoc,
+
+
+@app.cell
+def __(bench_rdf, benchns, sparql, time_ns):
+    _prepared_query = sparql.prepareQuery(
+        """
+        SELECT ?layer ?cpu ?wall ?distance
+        WHERE {
+            ?a benchmark:layer_explored ?layer;
+               benchmark:avg_cpu_time ?cpu;
+               benchmark:avg_wall_time ?wall;
+               benchmark:avg_distance ?distance .
+        }""",
+        initNs = { "benchmark": benchns })
+
+    def bench_rdf_query_prepared(n):
+        g = bench_rdf(n) 
+        return time_ns(lambda: sum([1 for _ in g.query(_prepared_query)]))
+    return bench_rdf_query_prepared,
+
+
+@app.cell
+def __(Id, bench_rdf_query_adhoc, element_count_exp, experiments):
+    _experiment = Id.genid()
+    bench_query_adhoc_rdf_data = experiments.entity({Id: _experiment, "label": "RDFLib (adhoc)"})
+    for _i in range(element_count_exp):
+        bench_query_adhoc_rdf_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": bench_rdf_query_adhoc(2**_i),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_query_adhoc_rdf_data,
+
+
+@app.cell
+def __(Id, bench_rdf_query_prepared, element_count_exp, experiments):
+    _experiment = Id.genid()
+    bench_query_prepared_rdf_data = experiments.entity({Id: _experiment, "label": "RDFLib (prepared)"})
+    for _i in range(element_count_exp):
+        bench_query_prepared_rdf_data += experiments.entity(
+            {
+                "experiment": _experiment,
+                "wall_time": bench_rdf_query_prepared(2**_i),
+                "element_count": (2**_i) * 4,
+            }
+        )
+    return bench_query_prepared_rdf_data,
+
+
+@app.cell
+def __(mo):
+    mo.md("## Evaluation")
+    return
+
+
+@app.cell
+def __():
+    element_count_exp = 20
+    return element_count_exp,
 
 
 @app.cell
 def __(
-    bench_consume_data,
-    bench_mutable_add_data,
-    bench_rdf_data,
-    bench_sum_data,
+    bench_insert_consume_data,
+    bench_insert_mutable_add_data,
+    bench_insert_rdf_data,
+    bench_insert_sum_data,
 ):
-    bench_combined_data = bench_consume_data + bench_mutable_add_data + bench_sum_data + bench_rdf_data
-    return bench_combined_data,
+    bench_insert_data = bench_insert_consume_data + bench_insert_mutable_add_data + bench_insert_sum_data + bench_insert_rdf_data
+    return bench_insert_data,
 
 
 @app.cell
-def __(alt, bench_combined_data, experiments, find, mo):
-    benchdata = alt.Data(values=list(find(
-        lambda ctx, e, t, c:
-            experiments.pattern(ctx, bench_combined_data, [{
-                "experiment": e,
-                "wall_time": t,
-                "element_count": c}]))))
+def __(Id, alt, bench_insert_data, experiments, find, mo):
+    benchdata = alt.Data(
+        values=[
+            {"label": l.to(str), "time/fact (ns)": t.to(int) / c.to(int), "#facts": c.to(int)}
+            for e, l, t, c in find(
+                lambda ctx, e, l, t, c: experiments.pattern(
+                    ctx,
+                    bench_insert_data,
+                    [{"experiment": e, "wall_time": t, "element_count": c},
+                     {Id: e, "label": l}],
+                )
+            )
+        ]
+    )
 
     # Create an Altair chart
-    benchchart = alt.Chart(benchdata).mark_point().encode(
-        x='c:Q', # Encoding along the x-axis
-        y='t:Q', # Encoding along the y-axis
-        color='e:O'
+    benchchart = (
+        alt.Chart(benchdata)
+        .mark_point()
+        .encode(
+            x="#facts:Q",  # Encoding along the x-axis
+            y="time/fact (ns):Q",  # Encoding along the y-axis
+            color="label:O",
+        )
     )
 
     # Make it reactive ⚡
@@ -671,113 +837,108 @@ def __(benchchart, mo):
 
 
 @app.cell
-def __(name):
-    class Variable:
-        def __init__(self, context, index, name=None):
-            self.context = context
-            self.index = index
-            self.name = name
-            self.schema = None
-
-        def annotate_schema(self, schema):
-            if self.schema is None:
-                self.schema = schema
-            else:
-                if self.schema != schema:
-                    raise TypeError(
-                        "variable"
-                        + name
-                        + " annotated with conflicting schemas"
-                        + str(self.schema)
-                        + " and "
-                        + str(schema)
-                    )
-    return Variable,
+def __(
+    bench_query_adhoc_rdf_data,
+    bench_query_find_data,
+    bench_query_prepared_rdf_data,
+):
+    bench_query_data = bench_query_find_data + bench_query_adhoc_rdf_data + bench_query_prepared_rdf_data
+    return bench_query_data,
 
 
 @app.cell
-def __(Variable):
-    class VariableContext:
-        def __init__(self):
-            self.variables = []
+def __(Id, alt, bench_query_data, experiments, find, mo):
+    benchdata_query = alt.Data(
+        values=[
+            {"label": l.to(str), "time/fact (ns)": t.to(int) / c.to(int), "#facts": c.to(int)}
+            for e, l, t, c in find(
+                lambda ctx, e, l, t, c: experiments.pattern(
+                    ctx,
+                    bench_query_data,
+                    [{"experiment": e, "wall_time": t, "element_count": c},
+                     {Id: e, "label": l}],
+                )
+            )
+        ]
+    )
 
-        def new(self, name=None):
-            i = len(self.variables)
-            assert i < 128
-            v = Variable(self, i, name)
-            self.variables.append(v)
-            return v
-
-        def check_schemas(self):
-            for v in self.variables:
-                if not v.schema:
-                    if v.name:
-                        name = "'" + v.name + "'"
-                    else:
-                        name = "_"
-                    raise TypeError(
-                        "missing schema for variable "
-                        + name
-                        + "/"
-                        + str(v.index)
-                    )
-    return VariableContext,
-
-
-@app.cell
-def __(VariableContext, tribles):
-    def find(query):
-        ctx = VariableContext()
-        projected_variable_names = query.__code__.co_varnames[1:]
-        projected_variables = [ctx.new(n) for n in projected_variable_names]
-        constraint = query(ctx, *projected_variables)
-        ctx.check_schemas()
-        projected_variable_schemas = {v.index: v.schema for v in projected_variables}
-        for result in tribles.solve(projected_variable_schemas, constraint):
-            yield result
-    return find,
-
-
-@app.cell
-def __(bench_combined_data, experiments, find):
-    list(find(lambda ctx, experiment, time, count:
-        experiments.pattern(ctx, bench_combined_data, [{
-            "experiment": experiment,
-            "wall_time": time,
-            "element_count": count}])))
-    return
-
-
-@app.cell
-def __(RawBytes, RndId, bench_combined_data, tribles):
-    sum(1 for _ in tribles.solve({0: RndId, 1: RndId, 2: RawBytes}, bench_combined_data.pattern(0, 1, 2)))
-    return
-
-
-@app.cell
-def __(Id, NSDuration, RndId, Value, bench_combined_data, tribles):
-    sum(
-        r[2].to(int)
-        for r in tribles.solve(
-            {0: RndId, 1: RndId, 2: NSDuration},
-            tribles.intersect(
-                [
-                    tribles.constant(
-                        1,
-                        Value.of(
-                            RndId, Id.hex("999BF50FFECF9C0B62FD23689A6CA0D0")
-                        ),
-                    ),
-                    bench_combined_data.pattern(0, 1, 2),
-                ]
-            ),
+    # Create an Altair chart
+    benchchart_query = (
+        alt.Chart(benchdata_query)
+        .mark_point()
+        .encode(
+            x="#facts:Q",  # Encoding along the x-axis
+            y="time/fact (ns):Q",  # Encoding along the y-axis
+            color="label:O",
         )
+    )
+
+    # Make it reactive ⚡
+    benchchart_query = mo.ui.altair_chart(benchchart_query)
+    return benchchart_query, benchdata_query
+
+
+@app.cell
+def __(benchchart_query, mo):
+    mo.vstack([benchchart_query, benchchart_query.value.head()])
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md("# Small Worlds")
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        """
+        ## dataset
+         * distances (nbojects, dim)   f32 matrix    for tests objects
+         * neighbors (nbobjects, nbnearest) int32 matrix giving the num of nearest neighbors in train data
+          * test      (nbobjects, dim)   f32 matrix  test data
+          * train     (nbobjects, dim)   f32 matrix  train data
+
+        load hdf5 data file benchmarks from https://github.com/erikbern/ann-benchmarks
+        """
     )
     return
 
 
 @app.cell
 def __():
+    mnist_dataset = "/Users/jp/Desktop/triblespace/dorf/datasets/fashion-mnist-784-euclidean.hdf5"
+    return mnist_dataset,
+
+
+@app.cell
+def __():
+    #dorf.bench_mnist_hnsw(mnist_dataset, True)
+    return
+
+
+@app.cell
+def __(bench, mnist_dataset):
+    sw = bench.setup(mnist_dataset, 16)
+    return sw,
+
+
+@app.cell
+def __(bench, mnist_dataset, sw):
+    e = bench.eval(sw, mnist_dataset, 1)
+    return e,
+
+
+@app.cell
+def __(e):
+    e.avg_cpu_time
+    return
+
+
+@app.cell
+def __(e):
+    e.avg_distance
     return
 
 
