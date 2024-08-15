@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, hash::Hash, sync::{Arc, LazyLock, Mutex}};
 
 use pyo3::{exceptions::{PyKeyError, PyValueError}, intern, prelude::*, types::{PyBytes, PyType}};
-use tribles::{self, fucid, genid, query::{Binding, ConstantConstraint, Constraint, IntersectionConstraint, Query, TriblePattern, Variable}, trible::{Trible, TRIBLE_LEN}, ufoid, RawId, RawValue, TribleSet, Value};
+use tribles::{self, fucid, genid, query::{Binding, ConstantConstraint, Constraint, IntersectionConstraint, Query, TriblePattern, Variable}, schemas::Unknown, trible::{Trible, TRIBLE_LEN}, ufoid, RawId, TribleSet, Value};
 
 use hex::FromHex;
 
@@ -211,7 +211,7 @@ impl PyTribleSet {
     }
 
     pub fn add(&mut self, e: Py<PyId>,  a: Py<PyId>,  v: Py<PyValue>) {
-        self.0.insert(&Trible::new(e.get().bytes, a.get().bytes, Value::<RawValue>::new(v.get().bytes)));
+        self.0.insert(&Trible::new(e.get().bytes, a.get().bytes, Value::<Unknown>::new(v.get().bytes)));
     }
 
     pub fn consume(&mut self, other: &Bound<'_, Self>) {
@@ -222,7 +222,7 @@ impl PyTribleSet {
 
     pub fn pattern(&self, ev: u8, av: u8, vv: u8) -> PyConstraint {
         PyConstraint {
-            constraint: Arc::new(self.0.pattern(Variable::new(ev), Variable::new(av), Variable::<RawValue>::new(vv)))
+            constraint: Arc::new(self.0.pattern(Variable::new(ev), Variable::new(av), Variable::<Unknown>::new(vv)))
         }
     }
 }
@@ -241,8 +241,8 @@ pub struct PyConstraint {
 #[pyfunction]
 pub fn constant(index: u8, constant: &Bound<'_, PyValue>) -> PyConstraint {
     let constraint = Arc::new(ConstantConstraint::new(
-        Variable::<RawValue>::new(index),
-        Value::<RawValue>::new(constant.get().bytes)));
+        Variable::<Unknown>::new(index),
+        Value::<Unknown>::new(constant.get().bytes)));
 
     PyConstraint {
         constraint

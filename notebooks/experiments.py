@@ -19,6 +19,12 @@ def __():
 
 @app.cell
 def __():
+    import polars as pl
+    return pl,
+
+
+@app.cell
+def __():
     import os
     return os,
 
@@ -777,6 +783,30 @@ def __(Id, bench_rdf_query_prepared, element_count_exp, experiments):
 
 @app.cell
 def __(mo):
+    mo.md("## Polars")
+    return
+
+
+@app.cell
+def __(pl):
+    df_triples = pl.DataFrame(
+        {
+            "e": ["a", "b", "c"],
+            "a": [1, 2, 2],
+            "v": [100, 200, 300],
+        }
+    )
+    df_triples
+    return df_triples,
+
+
+@app.cell
+def __():
+    return
+
+
+@app.cell
+def __(mo):
     mo.md("## Evaluation")
     return
 
@@ -802,13 +832,17 @@ def __(
 def __(Id, alt, bench_insert_data, experiments, find, mo):
     benchdata = alt.Data(
         values=[
-            {"label": l.to(str), "time/fact (ns)": t.to(int) / c.to(int), "#facts": c.to(int)}
+            {
+                "label": l.to(str),
+                "time/fact (ns)": t.to(int) / c.to(int),
+                "#facts": c.to(int),
+            }
             for e, l, t, c in find(
-                lambda ctx, e, l, t, c: experiments.pattern(
-                    ctx,
-                    bench_insert_data,
-                    [{"experiment": e, "wall_time": t, "element_count": c},
-                     {Id: e, "label": l}],
+                lambda ctx, e, l, t, c: experiments.pattern(ctx, bench_insert_data,
+                    [
+                        {"experiment": e, "wall_time": t, "element_count": c},
+                        {Id: e, "label": l},
+                    ],
                 )
             )
         ]
@@ -881,6 +915,43 @@ def __(Id, alt, bench_query_data, experiments, find, mo):
 @app.cell
 def __(benchchart_query, mo):
     mo.vstack([benchchart_query, benchchart_query.value.head()])
+    return
+
+
+@app.cell
+def __(Id, alt, bench_query_data, experiments, find, mo):
+    benchdata_queryoverhead = alt.Data(
+        values=[
+            {"label": l.to(str), "time (us)": t.to(int) / 1e3}
+            for e, l, t in find(
+                lambda ctx, e, l, t: experiments.pattern(
+                    ctx,
+                    bench_query_data,
+                    [{"experiment": e, "wall_time": t, "element_count": 4},
+                     {Id: e, "label": l}],
+                )
+            )
+        ]
+    )
+
+    # Create an Altair chart
+    benchchart_queryoverhead = (
+        alt.Chart(benchdata_queryoverhead)
+        .mark_bar()
+        .encode(
+            x="label:O",
+            y="time (us):Q",
+        )
+    )
+
+    # Make it reactive ⚡
+    benchchart_queryoverhead = mo.ui.altair_chart(benchchart_queryoverhead)
+    return benchchart_queryoverhead, benchdata_queryoverhead
+
+
+@app.cell
+def __(benchchart_queryoverhead, mo):
+    mo.vstack([benchchart_queryoverhead, benchchart_queryoverhead.value.head()])
     return
 
 

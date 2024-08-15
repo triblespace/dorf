@@ -5,7 +5,7 @@ use std::{
     io::Write,
     time::{Duration, SystemTime},
 };
-use tribles::{types::hash::Blake3, BlobSet, types::zc::ZC};
+use tribles::{schemas::hash::Blake3, BlobSet, schemas::zc::ZC};
 
 use anndists::dist::*;
 use hnsw_rs::prelude::*;
